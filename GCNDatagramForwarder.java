@@ -11,7 +11,7 @@ import org.estar.log.*;
 /**
  * T
  * @author Chris Mottram
- * @version $Revision: 1.1 $
+ * @version $Revision: 1.2 $
  */
 public class GCNDatagramForwarder implements Runnable, GCNDatagramListener
 {
@@ -19,7 +19,7 @@ public class GCNDatagramForwarder implements Runnable, GCNDatagramListener
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramForwarder.java,v 1.1 2004-06-30 17:42:42 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramForwarder.java,v 1.2 2004-07-01 08:23:15 cjm Exp $";
 	/**
 	 * Length of a GCN socket packet, consisting of 40 long (int) words.
 	 */
@@ -566,6 +566,7 @@ public class GCNDatagramForwarder implements Runnable, GCNDatagramListener
 				{
 					logger.error(this.getClass().getName()+":"+address+":"+portNumber+
 						   ":run:main loop error",e);
+					connectionOpen = false;
 				}
 			}// end while not quit
 			logger.error(this.getClass().getName()+":"+address+":"+portNumber+
@@ -701,4 +702,7 @@ public class GCNDatagramForwarder implements Runnable, GCNDatagramListener
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.1  2004/06/30 17:42:42  cjm
+// Initial revision
+//
 //
