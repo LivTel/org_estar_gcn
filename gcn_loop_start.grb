@@ -6,11 +6,12 @@
 # GCN_Server startup script. This version is for use on proxy machines,
 # the full version is available for deployments in ~dev/src/planetarium/scripts/ 
 # This is designed to be run from the gcn /etc/init.d startup script.
-#ident	"$Id: gcn_loop_start.grb,v 1.5 2005-01-07 19:35:54 cjm Exp $"
+#ident	"$Id: gcn_loop_start.grb,v 1.6 2005-01-20 16:23:43 cjm Exp $"
 setenv GCN_HOME /grb/bin/planetarium/java
 setenv GCN_PIDFILE /grb/tmp/gcn.pid
-setenv GCN_OUPTUT_FILE /grb/tmp/gcn_output.txt
-setenv GCN_LOOP_OUPTUT_FILE /grb/tmp/gcn_loop_output.txt
+set date_string = `date +"%Y-%m-%dT%H:%M:%S"`
+setenv GCN_OUPTUT_FILE "/grb/tmp/gcn_output-${date_string}.txt"
+setenv GCN_LOOP_OUPTUT_FILE "/grb/tmp/gcn_loop_output.txt"
 setenv GCN_SERVER_ARGS ""
 # Configure port number based on machine hostname
 # See: http://gcn.gsfc.nasa.gov/sites_cfg.html , Sites: LT, FTN, FTS
