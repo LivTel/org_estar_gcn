@@ -1,5 +1,5 @@
 // GCNSwiftClient.java
-// $Header: /home/cjm/cvs/org_estar_gcn/GCNSwiftClient.java,v 1.2 2005-02-03 10:22:27 cjm Exp $
+// $Header: /home/cjm/cvs/org_estar_gcn/GCNSwiftClient.java,v 1.3 2005-02-11 18:43:02 cjm Exp $
 package org.estar.gcn;
 
 import java.io.*;
@@ -7,7 +7,6 @@ import java.net.*;
 import java.util.*;
 import java.text.*;
 
-//import ngat.util.*;
 import org.estar.astrometry.*;
 
 /**
@@ -20,7 +19,7 @@ public class GCNSwiftClient extends Thread
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNSwiftClient.java,v 1.2 2005-02-03 10:22:27 cjm Exp $";
+	public final static String RCSID = "$Id: GCNSwiftClient.java,v 1.3 2005-02-11 18:43:02 cjm Exp $";
 	/**
 	 * Integer used to describe alert type.
 	 */
@@ -554,4 +553,7 @@ public class GCNSwiftClient extends Thread
 
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.2  2005/02/03 10:22:27  cjm
+// Lots of changes.
+//
 //

@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.12 $
+ * @version $Revision: 1.13 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.12 2005-02-11 13:35:54 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.13 2005-02-11 18:44:00 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -1089,6 +1089,10 @@ public class GCNDatagramScriptStarter implements Runnable
 				logger.log("Soln Status : It is a rate trigger.");
 			if((solnStatus & (1<<5))>0)
 				logger.log("Soln Status : It is defintely not a GRB (ground-processing assigned).");
+			if((solnStatus & (1<<6))>0)
+				logger.log("Soln Status : It is probably not a GRB (High background level).");
+			if((solnStatus & (1<<7))>0)
+				logger.log("Soln Status : It is an X-ray burster (automated ground assignment).");
 			readStuff(19, 38);// note replace this with more parsing later
 			readTerm(); // 39 - TERM.
 		}
@@ -1561,6 +1565,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.12  2005/02/11 13:35:54  cjm
+// Fixed logger copy error.
+//
 // Revision 1.11  2005/02/11 12:24:56  cjm
 // Added more solution status parsing for Swift BAT.
 //
