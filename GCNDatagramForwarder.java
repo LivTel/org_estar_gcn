@@ -11,7 +11,7 @@ import org.estar.log.*;
 /**
  * T
  * @author Chris Mottram
- * @version $Revision: 1.2 $
+ * @version $Revision: 1.3 $
  */
 public class GCNDatagramForwarder implements Runnable, GCNDatagramListener
 {
@@ -19,7 +19,7 @@ public class GCNDatagramForwarder implements Runnable, GCNDatagramListener
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramForwarder.java,v 1.2 2004-07-01 08:23:15 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramForwarder.java,v 1.3 2004-12-14 18:37:23 cjm Exp $";
 	/**
 	 * Length of a GCN socket packet, consisting of 40 long (int) words.
 	 */
@@ -224,6 +224,9 @@ public class GCNDatagramForwarder implements Runnable, GCNDatagramListener
 		    case 41:
 			    logger.log(" [HETE_UPDATE]");
 			    break; 
+		    case 43:
+			    logger.log(" [HETE_GNDANA]");
+			    break; 
 		    case 51:
 			    logger.log(" [INTEGRAL_POINTDIR]");
 			    break;
@@ -235,6 +238,33 @@ public class GCNDatagramForwarder implements Runnable, GCNDatagramListener
 			    break;
 		    case 55:
 			    logger.log(" [INTEGRAL_OFFLINE]");
+			    break;
+		    case 60:
+			    logger.log(" [SWIFT_BAT_GRB_ALERT]");
+			    break;
+		    case 61:
+			    logger.log(" [SWIFT_BAT_GRB_POSITION]");
+			    break;
+		    case 62:
+			    logger.log(" [SWIFT_BAT_GRB_NACK_POSITION]");
+			    break;
+		    case 65:
+			    logger.log(" [SWIFT_FOM_OBS]");
+			    break;
+		    case 66:
+			    logger.log(" [SWIFT_SC_SLEW]");
+			    break;
+		    case 67:
+			    logger.log(" [SWIFT_XRT_POSITION]");
+			    break;
+		    case 71:
+			    logger.log(" [SWIFT_XRT_NACK_POSITION]");
+			    break;
+		    case 81:
+			    logger.log(" [SWIFT_UVOT_POSITION]");
+			    break;
+		    case 82:
+			    logger.log(" [SWIFT_BAT_GRB_POS_TEST]");
 			    break;
 		    default:
 			    logger.log(" [TYPE-"+type+"]");
@@ -702,6 +732,9 @@ public class GCNDatagramForwarder implements Runnable, GCNDatagramListener
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.2  2004/07/01 08:23:15  cjm
+// Fixed main loop exception. Now realises connection has been broken.
+//
 // Revision 1.1  2004/06/30 17:42:42  cjm
 // Initial revision
 //
