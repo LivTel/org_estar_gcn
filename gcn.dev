@@ -1,11 +1,13 @@
 #!/sbin/sh
 #
 # Liverpool John Moores University
+# GCN_Server startup script.
 #
-# GCN_Server startup script. This is a simplified version for use on ltccd1,
+# chkconfig: 345 95 5
+# description: GCN_Server startup script. This is a simplified version for use on ltccd1,
 # the full version is available for deployments in ~dev/src/planetarium/scripts/ 
 # It runs the /etc/init.d/gcn_loop_start script, which runs the GCN_Server in a restart loop
-#ident	"$Id: gcn.dev,v 1.1 2004-10-19 17:12:27 cjm Exp $"
+#ident	"$Id: gcn.dev,v 1.2 2004-10-19 17:49:40 cjm Exp $"
 GCN_PIDFILE=/space/home/dev/bin/planetarium/java/gcn.pid
 GCN_LOOP_PIDFILE=/space/home/dev/bin/planetarium/java/gcnloop.pid
 case "$1" in
