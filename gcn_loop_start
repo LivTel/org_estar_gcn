@@ -5,7 +5,7 @@
 # GCN_Server startup script. This is a simplified version for use on ltccd1,
 # the full version is available for deployments in ~dev/src/planetarium/scripts/ 
 # This is designed to be run from the gcn /etc/init.d startup script.
-#ident	"$Id: gcn_loop_start,v 1.1 2004-07-21 10:21:52 cjm Exp $"
+#ident	"$Id: gcn_loop_start,v 1.2 2004-07-21 10:26:17 cjm Exp $"
 setenv GCN_HOME /space/home/dev/bin/planetarium/java
 setenv GCN_PIDFILE /space/home/dev/bin/planetarium/java/gcn.pid
 setenv GCN_OUPTUT_FILE /space/home/dev/tmp/gcn_output.txt
@@ -18,7 +18,7 @@ setenv GCN_MAIL_ADDRESSES "cjm@astro.livjm.ac.uk snf@astro.livjm.ac.uk"
 setenv CLASSPATH ".:${GCN_HOME}"
 set list = `ls /space/home/dev/bin/javalib/*.jar`
 foreach dir ($list)
-    setenv CLASSPATH ${CLASSPATH}":"$i
+    setenv CLASSPATH ${CLASSPATH}":"$dir
 end
 setenv LD_LIBRARY_PATH /space/home/dev/bin/lib/${HOSTTYPE}
 
