@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.5 $
+ * @version $Revision: 1.6 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.5 2005-01-20 15:35:55 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.6 2005-01-20 19:21:50 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -721,8 +721,8 @@ public class GCNDatagramScriptStarter implements Runnable
 			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
 			logger.log("Status Flags: [0x"+Integer.toHexString(testMpos).toUpperCase()+"]");
 			logger.log("testMpos 0x"+Integer.toHexString(testMpos).toUpperCase()+
-				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+((testMpos & (1<<31))>1));
-			if((testMpos & (1<<31))>1)
+				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+(testMpos & (1<<31)));
+			if((testMpos & (1<<31))!=0)
 			{
 				logger.log("Test Notice - Not a real event.");
 				alertData.setAlertType(0); // ensure test notice not propogated as an alert.
@@ -788,8 +788,8 @@ public class GCNDatagramScriptStarter implements Runnable
 			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
 			logger.log("Status Flags: [0x"+Integer.toHexString(testMpos).toUpperCase()+"]");
 			logger.log("testMpos 0x"+Integer.toHexString(testMpos).toUpperCase()+
-				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+((testMpos & (1<<31))>1));
-			if((testMpos & (1<<31))>1)
+				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+(testMpos & (1<<31)));
+			if((testMpos & (1<<31))!=0)
 			{
 				logger.log("Test Notice - Not a real event.");
 				alertData.setAlertType(0); // ensure test notice not propogated as an alert.
@@ -851,8 +851,8 @@ public class GCNDatagramScriptStarter implements Runnable
 			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
 			logger.log("Status Flags: [0x"+Integer.toHexString(testMpos).toUpperCase()+"]");
 			logger.log("testMpos 0x"+Integer.toHexString(testMpos).toUpperCase()+
-				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+((testMpos & (1<<31))>1));
-			if((testMpos & (1<<31))>1)
+				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+(testMpos & (1<<31)));
+			if((testMpos & (1<<31))!=0)
 			{
 				logger.log("Test Notice - Not a real event.");
 				alertData.setAlertType(0); // ensure test notice not propogated as an alert.
@@ -1432,6 +1432,11 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.5  2005/01/20 15:35:55  cjm
+// No longer set alert type for HETE_ALERT - it contains no alert position.
+// Refined integral test notice test so it actually works - also added more testMpos prints
+// for futher debugging.
+//
 // Revision 1.4  2005/01/16 21:16:31  cjm
 // Fixed testMpos test.
 //
