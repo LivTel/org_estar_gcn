@@ -1,0 +1,45 @@
+#!/sbin/sh
+#
+# Liverpool John Moores University
+#
+#ident	"$Id: gcnforwarder,v 1.1 2004-08-02 14:10:10 cjm Exp $"
+GCN_FORWARDER_HOME=/space/home/dev/bin/estar/classes
+GCN_FORWARDER_PIDFILE=/space/home/dev/bin/estar/classes/gcnforwarder.pid
+GCN_FORWARDER_OUPTUT_FILE=/space/home/dev/tmp/estar/gcn_forwarder_output.txt
+# Some .sh equivalent stuff of environment in
+# lt_environment.csh
+CLASSPATH="."
+list=`ls /space/home/dev/bin/estar/javalib/*.jar`
+for i in $list; do
+    CLASSPATH=${CLASSPATH}":"$i
+done
+
+LD_LIBRARY_PATH=/space/home/dev/bin/lib/${HOSTTYPE}
+export CLASSPATH 
+export LD_LIBRARY_PATH
+
+case "$1" in
+start)
+	/bin/rm -f ${GCN_FORWARDER_PIDFILE}
+	cd ${GCN_FORWARDER_HOME}
+	echo "GCN Forwarder start."
+	java org.estar.gcn.GCNDatagramForwarder -forward_port 5169 -forward_address 150.204.240.107 1> ${GCN_FORWARDER_OUPTUT_FILE} 2>&1 &
+	echo $! > ${GCN_FORWARDER_PIDFILE}
+	;;
+stop)
+	echo "GCN Forwarder  stop."
+	PID=`cat ${GCN_FORWARDER_PIDFILE}`
+	kill ${PID}
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+	;;
+esac
+
+if [ $? != 0 ]; then
+	echo "$status"
+	exit 1
+fi
+exit 0
+
