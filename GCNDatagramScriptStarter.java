@@ -22,7 +22,7 @@ import org.estar.astrometry.*;
  * The server also supports a command socket, which can be used to configure the GCN Datagram Script Starter.
  * For details of the command socket command set see doControlCommand.
  * @author Chris Mottram
- * @version $Revision: 1.18 $
+ * @version $Revision: 1.19 $
  * @see #doControlCommand
  */
 public class GCNDatagramScriptStarter implements Runnable
@@ -31,7 +31,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.18 2005-03-01 18:56:29 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.19 2005-03-01 19:00:44 cjm Exp $";
 	/**
 	 * The default multicast port to listen on, as agreed by Steve.
 	 */
@@ -1616,7 +1616,7 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	/**
 	 * Method to start a control server thread.
-	 * @see #ControlServerThread
+	 * @see GCNDatagramScriptStarter.ControlServerThread
 	 * @see #controlServerThread
 	 * @see #controlServerPort
 	 */
@@ -2591,7 +2591,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		/**
 		 * Start a connection thread using the specified socket for communication.
 		 * @param s The socket to communicate over.
-		 * @see #ControlServerConnectionThread
+		 * @see GCNDatagramScriptStarter.ControlServerConnectionThread
 		 */
 		protected void startConnectionThread(Socket s)
 		{
@@ -2704,6 +2704,16 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.18  2005/03/01 18:56:29  cjm
+// More comments.
+// Added command control socket.
+// doControlCommand is the top-level method for executing command control socket commands.
+// Added enableSocketAlerts and enableManualAlerts to enable command control socket control of whether
+// alerts specified from the command socket server or datagram socket actually cause a script firing to occur.
+// Added ControlServerThread inner class.
+// Added doGammaRayBurstAlertControlCommand that actually does a manual (control socket) firing of the script.
+// Added ControlServerConnectionThread inner class.
+//
 // Revision 1.17  2005/02/17 17:07:06  cjm
 // Added swiftSolnStatusAcceptMask and swiftSolnStatusRejectMask.
 //
