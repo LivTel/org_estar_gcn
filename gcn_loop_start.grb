@@ -1,11 +1,12 @@
-#!/usr/local/bin/tcsh
+#!/bin/tcsh
 #
 # Liverpool John Moores University
+# GCN_Server loop startup script.
 #
-# GCN_Server startup script. This is a simplified version for use on ltccd1,
+# GCN_Server startup script. This version is for use on proxy machines,
 # the full version is available for deployments in ~dev/src/planetarium/scripts/ 
 # This is designed to be run from the gcn /etc/init.d startup script.
-#ident	"$Id: gcn_loop_start.grb,v 1.1 2004-10-19 17:12:27 cjm Exp $"
+#ident	"$Id: gcn_loop_start.grb,v 1.2 2004-10-19 17:48:54 cjm Exp $"
 setenv GCN_HOME /grb/bin/planetarium/java
 setenv GCN_PIDFILE /grb/bin/planetarium/java/gcn.pid
 setenv GCN_OUPTUT_FILE /grb/tmp/gcn_output.txt
