@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.13 $
+ * @version $Revision: 1.14 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.13 2005-02-11 18:44:00 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.14 2005-02-15 11:47:55 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -492,6 +492,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch (IOException e)
 		{
 			logger.error("SAX_WFC_POS: Error reading: ",e);
+			alertData.setAlertType(0);
 		}
 	}
     
@@ -525,6 +526,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch  (IOException e)
 		{
 			logger.error("HETE ALERT:readHeteAlert: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
 		}
 	}
 
@@ -639,6 +641,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch  (Exception e)
 		{
 			logger.error("HETE UPDATE: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
 		}
 	}
 
@@ -753,6 +756,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch  (Exception e)
 		{
 			logger.error("HETE Ground Analysis: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
 		}
 	}
 
@@ -860,6 +864,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch  (Exception e)
 		{
 			logger.error("INTEGRAL Wakeup: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
 		}
 	}
 
@@ -926,6 +931,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch  (Exception e)
 		{
 			logger.error("INTEGRAL Refined: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
 		}
 	}
 
@@ -989,6 +995,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch  (Exception e)
 		{
 			logger.error("INTEGRAL Offline: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
 		}
 	}
 
@@ -1022,6 +1029,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch  (Exception e)
 		{
 			logger.error("SWIFT BAT Alert: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
 		}
 	}
 
@@ -1099,6 +1107,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch  (Exception e)
 		{
 			logger.error("SWIFT BAT GRB POSITION: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
 		}
 	}
 
@@ -1153,6 +1162,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch  (Exception e)
 		{
 			logger.error("SWIFT XRT GRB POS: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
 		}
 	}
 
@@ -1207,6 +1217,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch  (Exception e)
 		{
 			logger.error("SWIFT UVOT GRB POS: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
 		}
 	}
 
@@ -1565,6 +1576,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.13  2005/02/11 18:44:00  cjm
+// Added new solnStatus bits.
+//
 // Revision 1.12  2005/02/11 13:35:54  cjm
 // Fixed logger copy error.
 //
