@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.7 $
+ * @version $Revision: 1.8 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.7 2005-01-21 14:13:25 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.8 2005-01-28 18:41:16 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -615,7 +615,11 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("Pos Flags: 0x"+Integer.toHexString(posFlags));
 			int validity = inputStream.readInt(); // 37 - validity flags.
 			logger.log("Validity Flag: 0x"+Integer.toHexString(validity));
-			if(validity == 0x00000001)
+			// There are two flags BURST_VALID (0x1) and BURST_INVALID (0x2)
+			// Neither, one or both(?) can be set.
+			// Currently, follow anything that is not explicitly INVALID
+			// If bit 2 is NOT set, the burst is NOT INVALID.
+			if((validity & 0x00000002) != 0x00000002)
 			{
 				alertData.setRA(ra);
 				alertData.setDec(dec);
@@ -1435,6 +1439,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.7  2005/01/21 14:13:25  cjm
+// Added integral spiacs loggingg.
+//
 // Revision 1.6  2005/01/20 19:21:50  cjm
 // Second attempt at fix for Integral test alerts.
 // Can't test Status flags & (1<<31) > 1, because of signedness of ints.
