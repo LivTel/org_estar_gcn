@@ -2,7 +2,7 @@
 #
 # Liverpool John Moores University
 #
-#ident	"$Id: gcnforwarder,v 1.1 2004-08-02 14:10:10 cjm Exp $"
+#ident	"$Id: gcnforwarder,v 1.2 2004-10-22 11:24:57 cjm Exp $"
 GCN_FORWARDER_HOME=/space/home/dev/bin/estar/classes
 GCN_FORWARDER_PIDFILE=/space/home/dev/bin/estar/classes/gcnforwarder.pid
 GCN_FORWARDER_OUPTUT_FILE=/space/home/dev/tmp/estar/gcn_forwarder_output.txt
@@ -23,7 +23,11 @@ start)
 	/bin/rm -f ${GCN_FORWARDER_PIDFILE}
 	cd ${GCN_FORWARDER_HOME}
 	echo "GCN Forwarder start."
-	java org.estar.gcn.GCNDatagramForwarder -forward_port 5169 -forward_address 150.204.240.107 1> ${GCN_FORWARDER_OUPTUT_FILE} 2>&1 &
+	# 150.204.240.107 - ltobs9
+	# 161.72.57.3 - ltdmz1/ltproxy - LT external IP
+	# 132.160.98.239 - ftnproxy
+	# 150.203.153.202 - ftsproxy
+	java org.estar.gcn.GCNDatagramForwarder -forward_port 5169 -forward_address 150.204.240.107 -forward_port 5169 -forward_address 161.72.57.3 -forward_port 5169 -forward_address 132.160.98.239 -forward_port 5169 -forward_address 150.203.153.202 1> ${GCN_FORWARDER_OUPTUT_FILE} 2>&1 &
 	echo $! > ${GCN_FORWARDER_PIDFILE}
 	;;
 stop)
