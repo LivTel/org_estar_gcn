@@ -5,16 +5,17 @@
 #
 # chkconfig: 345 95 5
 # description: org.estar.gcn.GCNDatagramScriptStarter startup script.
-#ident	"$Id: gcnscriptstarter.grb,v 1.4 2004-12-20 16:01:31 cjm Exp $"
-GCN_SCRIPT_STARTER_HOME=/grb/bin/tocs_commands
+#ident	"$Id: gcnscriptstarter.grb,v 1.5 2004-12-20 19:29:59 cjm Exp $"
+GCN_SCRIPT_STARTER_TMP_HOME=/grb/tmp/
+GCN_SCRIPT_STARTER_SCRIPT_HOME=/grb/bin/tocs_commands
 GCN_SCRIPT_STARTER_OUPTUT_FILE=/grb/tmp/gcn_script_starter_output.txt
 GCN_SCRIPT_STARTER_USER=eng
 # SPACECRAFT_FILTER: -all, -HETE, -INTEGRAL, -SWIFT
 GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-all"
 # error box radius in arcseconds (150 = 2.5 arcmins)
 GCN_SCRIPT_STARTER_MAX_ERROR_BOX="-max_error_box 150"
-# name of script to run. Will be run from $GCN_SCRIPT_STARTER_HOME
-GCN_SCRIPT_STARTER_SCRIPT="-script gamma_ray_burst_alert"
+# name of script to run. Will be run from $GCN_SCRIPT_STARTER_SCRIPT_HOME
+GCN_SCRIPT_STARTER_SCRIPT="-script ${GCN_SCRIPT_STARTER_SCRIPT_HOME}/gamma_ray_burst_alert"
 # Some .sh equivalent stuff of environment in
 # lt_environment.csh
 CLASSPATH="."
@@ -29,14 +30,16 @@ export LD_LIBRARY_PATH
 
 case "$1" in
 start)
-	su ${GCN_USER} -c "/bin/rm -f ${GCN_SCRIPT_STARTER_PIDFILE}"
+	su ${GCN_SCRIPT_STARTER_USER} -c "/bin/rm -f ${GCN_SCRIPT_STARTER_PIDFILE}"
 	echo "GCN Script Starter start."
-	su ${GCN_USER} -c "java org.estar.gcn.GCNDatagramScriptStarter ${GCN_SCRIPT_STARTER_SPACECRAFT_FILTER} ${GCN_SCRIPT_STARTER_MAX_ERROR_BOX} ${GCN_SCRIPT_STARTER_SCRIPT} 1> ${GCN_SCRIPT_STARTER_OUPTUT_FILE} 2>&1 &"
+	# Logger logs to current dir - make it grb temp dir.
+	cd ${GCN_SCRIPT_STARTER_TMP_HOME}
+	# Note we now assume ${GCN_SCRIPT_STARTER_USER} (eng) is running tcsh, not bash
+	su ${GCN_SCRIPT_STARTER_USER} -c "(java org.estar.gcn.GCNDatagramScriptStarter ${GCN_SCRIPT_STARTER_SPACECRAFT_FILTER} ${GCN_SCRIPT_STARTER_MAX_ERROR_BOX} ${GCN_SCRIPT_STARTER_SCRIPT} > ${GCN_SCRIPT_STARTER_OUPTUT_FILE}) >& ${GCN_SCRIPT_STARTER_OUPTUT_FILE} &"
 	;;
 stop)
 	echo "GCN Script Starter stop."
-	${GCN_SCRIPT_STARTER_HOME}/killhup.csh org.estar.gcn.GCNDatagramScriptStarter
-	echo "GCN Script Starter cannot be stopped, pid not known."
+	${GCN_SCRIPT_STARTER_SCRIPT_HOME}/killhup.csh org.estar.gcn.GCNDatagramScriptStarter
 	;;
 *)
 	echo "Usage: $0 {start|stop}"
