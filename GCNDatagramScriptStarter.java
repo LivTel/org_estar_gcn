@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.9 $
+ * @version $Revision: 1.10 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.9 2005-01-31 11:46:35 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.10 2005-02-09 11:17:13 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -265,6 +265,11 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log(" [HETE_UPDATE]");
 			alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_HETE);
 			readHeteUpdate();
+			break; 
+		    case 43:
+			logger.log(" [HETE_GNDANA]");
+			alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_HETE);
+			readHeteGroundAnalysis();
 			break; 
 		    case 51:
 			logger.log(" [INTEGRAL_POINTDIR]");
@@ -634,6 +639,120 @@ public class GCNDatagramScriptStarter implements Runnable
 		catch  (Exception e)
 		{
 			logger.error("HETE UPDATE: Error reading: ",e);
+		}
+	}
+
+	/**
+	 * HETE_GNDANA (TYPE=43).
+	 */
+	public void readHeteGroundAnalysis()
+	{ 
+		RA ra = null;
+		Dec dec = null;
+		Date burstDate = null;
+		int bra = 0;
+		int bdec = 0;
+		int trigNum = 0;
+		int mesgNum = 0;
+
+		try
+		{
+			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
+			readSod();     // 3 - pkt_sod
+			int tsn = inputStream.readInt();   // 4 - trig_seq_num
+			trigNum = (tsn & 0x0000FFFF);
+			mesgNum = (tsn & 0xFFFF0000) >> 16;
+			alertData.setTriggerNumber(trigNum);
+			alertData.setSequenceNumber(mesgNum);
+			int burstTjd = inputStream.readInt(); // 5 - burst_tjd
+			int burstSod = inputStream.readInt(); // 6 - burst_sod
+			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
+			logger.log("Burst: TJD:"+burstTjd+" SOD: "+burstSod);
+			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
+			logger.log("Burst Date: "+burstDate);
+			alertData.setGRBDate(burstDate);
+			bra = inputStream.readInt(); // Burst RA (x10e4 degs). // 7 - burst_ra
+			bdec = inputStream.readInt(); // Burst Dec (x10e4 degs). // 8 = burst_dec
+			ra = new RA();
+			dec = new Dec();
+			ra.fromRadians(Math.toRadians((double)bra)/10000.0);
+			dec.fromRadians(Math.toRadians((double)bdec)/10000.0);
+			logger.log("Burst RA: "+ra);
+			logger.log("Burst Dec: "+dec);
+			logger.log("Epoch: "+burstDate);
+			int trig_flags = inputStream.readInt(); // 9 - trig_flags
+			logger.log("Trigger Flags: 0x"+Integer.toHexString(trig_flags));
+			int gamma = inputStream.readInt();   // 10 - gamma_cnts
+			int wxm   = inputStream.readInt(); // 11 - wxm_cnts
+			int sxc   = inputStream.readInt();  // 12 - sxc_cnts
+			logger.log("Counts:: Gamma: "+gamma+" Wxm: "+wxm+" Sxc: "+sxc);
+			int gammatime = inputStream.readInt(); // 13 - gamma_time
+			int wxmtime = inputStream.readInt(); // 14 - wxm_time
+			int scpoint = inputStream.readInt(); // 15 - sc_point
+			int sczra   = (scpoint & 0xFFFF0000) >> 16;
+			int sczdec  = (scpoint & 0x0000FFFF);
+			logger.log("Time:: Gamma: "+gammatime+" Wxm: "+wxmtime);
+			logger.log("SC Pointing: RA(deg): "+(((double)sczra)/10000.0)+
+					   " Dec(deg): "+(((double)sczdec)/10000.0));
+			int wxra1 = inputStream.readInt();  // 16 - WXM ra1 (x10e4 degs).
+			int wxdec1 = inputStream.readInt(); // 17 WXM dec1 (x10e4 degs).
+			int wxra2 = inputStream.readInt();  // 18 - WXM ra2 (x10e4 degs).
+			int wxdec2 = inputStream.readInt(); // 19 WXM dec2 (x10e4 degs).
+			int wxra3 = inputStream.readInt();  // 20 - WXM ra3 (x10e4 degs).
+			int wxdec3 = inputStream.readInt(); // 21 WXM dec3 (x10e4 degs).
+			int wxra4 = inputStream.readInt();  // 22 - WXM ra4 (x10e4 degs).
+			int wxdec4 = inputStream.readInt(); // 23 WXM dec4 (x10e4 degs).
+			int wxErrors = inputStream.readInt(); // 24 WXM Errors (bit-field) - Sys & Stat.
+			// wxErrors contains radius in arcsec, of statistical error (top 16 bits) 
+			// and systematic (bottom 16 bits.
+			logger.log("WXM error box (radius,arcsec) : statistical : "+((wxErrors&0xFFFF0000)>>16)+
+				   " : systematic : "+(wxErrors&0x0000FFFF)+".");
+			int wxDimSig = inputStream.readInt(); // 25 WXM Packed numbers.
+			// wxDimSig contains the maximum dimension of the WXM error box [units arcsec] in top 16 bits
+			int wxErrorBoxArcsec = (wxDimSig&0xFFFF0000)>>16;
+			logger.log("WXM error box (diameter,arcsec) : "+wxErrorBoxArcsec+".");
+			int sxra1 = inputStream.readInt();  // 26 - SC ra1 (x10e4 degs).
+			int sxdec1 = inputStream.readInt(); // 27 SC dec1 (x10e4 degs).
+			int sxra2 = inputStream.readInt();  // 28 - SC ra2 (x10e4 degs).
+			int sxdec2 = inputStream.readInt(); // 29 SC dec2 (x10e4 degs).
+			int sxra3 = inputStream.readInt();  // 30 - SC ra3 (x10e4 degs).
+			int sxdec3 = inputStream.readInt(); // 31 SC dec3 (x10e4 degs).
+			int sxra4 = inputStream.readInt();  // 32 - SC ra4 (x10e4 degs).
+			int sxdec4 = inputStream.readInt(); // 33 SC dec4 (x10e4 degs).
+			int sxErrors = inputStream.readInt(); // 34 SC Errors (bit-field) - Sys & Stat.
+			// sxErrors contains radius in arcsec, of statistical error (top 16 bits) 
+			// and systematic (bottom 16 bits).
+			logger.log("SXC error box (radius,arcsec) : statistical : "+((sxErrors&0xFFFF0000)>>16)+
+				   " : systematic : "+(sxErrors&0x0000FFFF)+".");
+			int sxDimSig = inputStream.readInt(); // 35 SC Packed numbers.
+			// sxDimSig contains the maximum dimension of the SXC error box [units arcsec] in top 16 bits
+			int sxErrorBoxArcsec = (sxDimSig&0xFFFF0000)>>16;
+			logger.log("SXC error box (diameter,arcsec) : "+sxErrorBoxArcsec+".");
+			alertData.setErrorBoxSize(((double)(Math.max(wxErrorBoxArcsec,sxErrorBoxArcsec)))/
+						  (2.0*60.0));// radius, in arc-min
+			int posFlags = inputStream.readInt(); // 36 - pos_flags
+			logger.log("Pos Flags: 0x"+Integer.toHexString(posFlags));
+			int validity = inputStream.readInt(); // 37 - validity flags.
+			logger.log("Validity Flag: 0x"+Integer.toHexString(validity));
+			// There are two flags BURST_VALID (0x1) and BURST_INVALID (0x2)
+			// Neither, one or both(?) can be set.
+			// Currently, follow anything that is not explicitly INVALID
+			// If bit 2 is NOT set, the burst is NOT INVALID.
+			if((validity & 0x00000002) != 0x00000002)
+			{
+				alertData.setRA(ra);
+				alertData.setDec(dec);
+				// epoch is "current", is this burst date or notice date?
+				alertData.setEpoch(burstDate);
+			}
+			else
+				logger.log("BURST INVALID:RA/Dec not set.");
+			readStuff(38, 38); // 38 -spare
+			readTerm(); // 39 - TERM.
+		}
+		catch  (Exception e)
+		{
+			logger.error("HETE Ground Analysis: Error reading: ",e);
 		}
 	}
 
@@ -1441,6 +1560,10 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.9  2005/01/31 11:46:35  cjm
+// Fixed Swift trigger/sequence number.
+// Added soln status bit 6 detection.
+//
 // Revision 1.8  2005/01/28 18:41:16  cjm
 // Hete update packets now check that BURST_INVALID flag is NOT set,
 // rather than the BURST_VALID flag IS set. i.e. Packets without
