@@ -22,7 +22,7 @@ import org.estar.astrometry.*;
  * The server also supports a command socket, which can be used to configure the GCN Datagram Script Starter.
  * For details of the command socket command set see doControlCommand.
  * @author Chris Mottram
- * @version $Revision: 1.19 $
+ * @version $Revision: 1.20 $
  * @see #doControlCommand
  */
 public class GCNDatagramScriptStarter implements Runnable
@@ -31,7 +31,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.19 2005-03-01 19:00:44 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.20 2005-03-02 12:49:19 cjm Exp $";
 	/**
 	 * The default multicast port to listen on, as agreed by Steve.
 	 */
@@ -1819,6 +1819,11 @@ public class GCNDatagramScriptStarter implements Runnable
 						try
 						{
 							RA ra = null;
+
+							// Note this currently allows blank RA strings,
+							// the next switch is read instead, and parseColon
+							// doesn't seem to fail on -dec or whatever
+							// You get a RA of 00:00:00
 							ra = new RA();
 							ra.parseColon(args[i+1]);
 							alertData.setRA(ra);
@@ -1843,6 +1848,11 @@ public class GCNDatagramScriptStarter implements Runnable
 						try
 						{
 							Dec dec = null;
+
+							// Note this currently allows blank Dec strings,
+							// the next switch is read instead, and parseColon
+							// doesn't seem to fail on -epoch or whatever
+							// You get a Dec of +00:00:00
 							dec = new Dec();
 							dec.parseColon(args[i+1]);
 							alertData.setDec(dec);
@@ -2704,6 +2714,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.19  2005/03/01 19:00:44  cjm
+// Comment fixes.
+//
 // Revision 1.18  2005/03/01 18:56:29  cjm
 // More comments.
 // Added command control socket.
