@@ -1,0 +1,41 @@
+#!/bin/csh
+#
+# Liverpool John Moores University
+#
+# GCN_Server startup script. This is a simplified version for use on ltccd1,
+# the full version is available for deployments in ~dev/src/planetarium/scripts/ 
+# This is designed to be run from the gcn /etc/init.d startup script.
+#ident	"$Id: gcn_loop_start,v 1.1 2004-07-21 10:21:52 cjm Exp $"
+setenv GCN_HOME /space/home/dev/bin/planetarium/java
+setenv GCN_PIDFILE /space/home/dev/bin/planetarium/java/gcn.pid
+setenv GCN_OUPTUT_FILE /space/home/dev/tmp/gcn_output.txt
+setenv GCN_LOOP_OUPTUT_FILE /space/home/dev/tmp/gcn_loop_output.txt
+setenv GCN_SERVER_ARGS ""
+setenv GCN_MAIL_ADDRESSES "cjm@astro.livjm.ac.uk snf@astro.livjm.ac.uk"
+#setenv GCN_MAIL_ADDRESSES "cjm@astro.livjm.ac.uk snf@astro.livjm.ac.uk ltops@astro.livjm.ac.uk"
+# Some .sh equivalent stuff of environment in
+# lt_environment.csh
+setenv CLASSPATH ".:${GCN_HOME}"
+set list = `ls /space/home/dev/bin/javalib/*.jar`
+foreach dir ($list)
+    setenv CLASSPATH ${CLASSPATH}":"$i
+end
+setenv LD_LIBRARY_PATH /space/home/dev/bin/lib/${HOSTTYPE}
+
+set done = 0
+while ( ${done} == 0 )
+  /bin/rm -f ${GCN_PIDFILE}
+  cd ${GCN_HOME}
+  echo "GCN Server starting." >>! ${GCN_LOOP_OUPTUT_FILE}
+  java GCN_Server ${GCN_SERVER_ARGS} 1> ${GCN_OUPTUT_FILE} 2>&1 &
+  echo $! > ${GCN_PIDFILE}
+  set pid = `cat ${GCN_PIDFILE}`
+  set date_string = `date +"%Y%m%dT%H:%M:%S"`
+  echo "${date_string} GCN Server started with PID ${pid}." >>! ${GCN_LOOP_OUPTUT_FILE}
+  echo "${date_string} GCN Server started with PID ${pid}." | mail -s "GCN_Server" ${GCN_MAIL_ADDRESSES}
+  wait
+  set date_string = `date +"%Y%m%dT%H:%M:%s"`
+  echo "${date_string} The GCN Server PID ${pid} has stopped." >>! ${GCN_LOOP_OUPTUT_FILE}
+  echo "${date_string} The GCN Server PID ${pid} has stopped." | mail -s "GCN_Server" ${GCN_MAIL_ADDRESSES}
+end
+
