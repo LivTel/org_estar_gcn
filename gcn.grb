@@ -7,9 +7,9 @@
 # description: GCN_Server startup script. This version is for use on proxy machines,
 # the full version is available for deployments in ~dev/src/planetarium/scripts/ 
 # It runs the /etc/init.d/gcn_loop_start script, which runs the GCN_Server in a restart loop
-#ident	"$Id: gcn.grb,v 1.2 2004-10-19 17:49:23 cjm Exp $"
-GCN_PIDFILE=/grb/bin/planetarium/java/gcn.pid
-GCN_LOOP_PIDFILE=/grb/bin/planetarium/java/gcnloop.pid
+#ident	"$Id: gcn.grb,v 1.3 2004-10-21 18:13:01 cjm Exp $"
+GCN_PIDFILE=/grb/tmp/gcn.pid
+GCN_LOOP_PIDFILE=/grb/tmp/gcnloop.pid
 case "$1" in
 start)
 	/bin/rm -f ${GCN_PIDFILE}
