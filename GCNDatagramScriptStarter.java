@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.14 $
+ * @version $Revision: 1.15 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.14 2005-02-15 11:47:55 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.15 2005-02-15 14:48:23 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -359,6 +359,18 @@ public class GCNDatagramScriptStarter implements Runnable
 				   (alertData.getErrorBoxSize()*60.0)+" arcseconds.");
 			return false;
 		}
+		// ensure RA filled in
+		if(alertData.getRA() == null)
+		{
+			logger.log("alertFilter stopped propogation of alert: RA was NULL.");
+			return false;
+		}
+		// ensure Dec filled in
+		if(alertData.getDec() == null)
+		{
+			logger.log("alertFilter stopped propogation of alert: Dec was NULL.");
+			return false;
+		}
 		return true;
 	}
 
@@ -561,13 +573,22 @@ public class GCNDatagramScriptStarter implements Runnable
 			alertData.setGRBDate(burstDate);
 			bra = inputStream.readInt(); // Burst RA (x10e4 degs). // 7 - burst_ra
 			bdec = inputStream.readInt(); // Burst Dec (x10e4 degs). // 8 = burst_dec
-			ra = new RA();
-			dec = new Dec();
-			ra.fromRadians(Math.toRadians((double)bra)/10000.0);
-			dec.fromRadians(Math.toRadians((double)bdec)/10000.0);
-			logger.log("Burst RA: "+ra);
-			logger.log("Burst Dec: "+dec);
-			logger.log("Epoch: "+burstDate);
+			// if neither WXM or SXC have positions, than bra/bdec is -999.9999 (x10000)
+			if((bra < -999000)||(bdec < -999000))
+			{
+				logger.log("RA/Dec out of range: bra (x10000) = "+bra+" bdec (x10000) = "+bdec);
+				alertData.setAlertType(0); // ensure this is not propogated as an alert
+			}
+			else
+			{
+				ra = new RA();
+				dec = new Dec();
+				ra.fromRadians(Math.toRadians((double)bra)/10000.0);
+				dec.fromRadians(Math.toRadians((double)bdec)/10000.0);
+				logger.log("Burst RA: "+ra);
+				logger.log("Burst Dec: "+dec);
+				logger.log("Epoch: "+burstDate);
+			}
 			int trig_flags = inputStream.readInt(); // 9 - trig_flags
 			logger.log("Trigger Flags: 0x"+Integer.toHexString(trig_flags));
 			int gamma = inputStream.readInt();   // 10 - gamma_cnts
@@ -634,7 +655,10 @@ public class GCNDatagramScriptStarter implements Runnable
 				alertData.setEpoch(burstDate);
 			}
 			else
+			{
 				logger.log("BURST INVALID:RA/Dec not set.");
+				alertData.setAlertType(0); // ensure this is not propogated as an alert
+			}
 			readStuff(38, 38); // 38 -spare
 			readTerm(); // 39 - TERM.
 		}
@@ -676,13 +700,22 @@ public class GCNDatagramScriptStarter implements Runnable
 			alertData.setGRBDate(burstDate);
 			bra = inputStream.readInt(); // Burst RA (x10e4 degs). // 7 - burst_ra
 			bdec = inputStream.readInt(); // Burst Dec (x10e4 degs). // 8 = burst_dec
-			ra = new RA();
-			dec = new Dec();
-			ra.fromRadians(Math.toRadians((double)bra)/10000.0);
-			dec.fromRadians(Math.toRadians((double)bdec)/10000.0);
-			logger.log("Burst RA: "+ra);
-			logger.log("Burst Dec: "+dec);
-			logger.log("Epoch: "+burstDate);
+			// if neither WXM or SXC have positions, than bra/bdec is -999.9999 (x10000)
+			if((bra < -999000)||(bdec < -999000))
+			{
+				logger.log("RA/Dec out of range: bra (x10000) = "+bra+" bdec (x10000) = "+bdec);
+				alertData.setAlertType(0); // ensure this is not propogated as an alert
+			}
+			else
+			{
+				ra = new RA();
+				dec = new Dec();
+				ra.fromRadians(Math.toRadians((double)bra)/10000.0);
+				dec.fromRadians(Math.toRadians((double)bdec)/10000.0);
+				logger.log("Burst RA: "+ra);
+				logger.log("Burst Dec: "+dec);
+				logger.log("Epoch: "+burstDate);
+			}
 			int trig_flags = inputStream.readInt(); // 9 - trig_flags
 			logger.log("Trigger Flags: 0x"+Integer.toHexString(trig_flags));
 			int gamma = inputStream.readInt();   // 10 - gamma_cnts
@@ -749,7 +782,10 @@ public class GCNDatagramScriptStarter implements Runnable
 				alertData.setEpoch(burstDate);
 			}
 			else
+			{
 				logger.log("BURST INVALID:RA/Dec not set.");
+				alertData.setAlertType(0); // ensure this is not propogated as an alert
+			}
 			readStuff(38, 38); // 38 -spare
 			readTerm(); // 39 - TERM.
 		}
@@ -1576,6 +1612,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.14  2005/02/15 11:47:55  cjm
+// Set alert type to 0 (i.e. don't start script) if packet parsing fails.
+//
 // Revision 1.13  2005/02/11 18:44:00  cjm
 // Added new solnStatus bits.
 //
