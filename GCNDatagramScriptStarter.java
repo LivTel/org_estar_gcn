@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.4 $
+ * @version $Revision: 1.5 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.4 2005-01-16 21:16:31 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.5 2005-01-20 15:35:55 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -258,9 +258,8 @@ public class GCNDatagramScriptStarter implements Runnable
 			readSax();
 			break;
 		    case 40: 
-			logger.log(" [HETE_ALERT]");// Note no position			
-			alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_HETE);
-			readHeteAlert();			   
+			logger.log(" [HETE_ALERT]");// Note no position
+			readHeteAlert();
 			break;
 		    case 41:
 			logger.log(" [HETE_UPDATE]");
@@ -720,7 +719,10 @@ public class GCNDatagramScriptStarter implements Runnable
 			// burstError is radius of circle (arcsecs) that contains TBD% c.l.  of bursts
 			alertData.setErrorBoxSize((((double)burstError)/60.0));// in arc-min
 			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
-			if((testMpos & (1<<31))==1)
+			logger.log("Status Flags: [0x"+Integer.toHexString(testMpos).toUpperCase()+"]");
+			logger.log("testMpos 0x"+Integer.toHexString(testMpos).toUpperCase()+
+				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+((testMpos & (1<<31))>1));
+			if((testMpos & (1<<31))>1)
 			{
 				logger.log("Test Notice - Not a real event.");
 				alertData.setAlertType(0); // ensure test notice not propogated as an alert.
@@ -784,7 +786,10 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("Burst error: "+((double)burstError)+" arcsec radius.");
 			alertData.setErrorBoxSize((((double)burstError)/60.0));// in arc-min
 			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
-			if((testMpos & (1<<31))==1)
+			logger.log("Status Flags: [0x"+Integer.toHexString(testMpos).toUpperCase()+"]");
+			logger.log("testMpos 0x"+Integer.toHexString(testMpos).toUpperCase()+
+				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+((testMpos & (1<<31))>1));
+			if((testMpos & (1<<31))>1)
 			{
 				logger.log("Test Notice - Not a real event.");
 				alertData.setAlertType(0); // ensure test notice not propogated as an alert.
@@ -844,7 +849,10 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("Burst error: "+((double)burstError)+" arcsec radius.");
 			alertData.setErrorBoxSize((((double)burstError)/60.0));// in arc-min
 			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
-			if((testMpos & (1<<31))==1)
+			logger.log("Status Flags: [0x"+Integer.toHexString(testMpos).toUpperCase()+"]");
+			logger.log("testMpos 0x"+Integer.toHexString(testMpos).toUpperCase()+
+				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+((testMpos & (1<<31))>1));
+			if((testMpos & (1<<31))>1)
 			{
 				logger.log("Test Notice - Not a real event.");
 				alertData.setAlertType(0); // ensure test notice not propogated as an alert.
@@ -1424,6 +1432,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.4  2005/01/16 21:16:31  cjm
+// Fixed testMpos test.
+//
 // Revision 1.3  2005/01/16 21:13:48  cjm
 // Added initial Integral test notice detection,
 // now causes test notices not to start script.
