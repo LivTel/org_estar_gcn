@@ -5,7 +5,7 @@
 #
 # chkconfig: 345 95 5
 # description: org.estar.gcn.GCNDatagramScriptStarter startup script.
-#ident	"$Id: gcnscriptstarter.grb,v 1.6 2005-01-14 18:35:41 cjm Exp $"
+#ident	"$Id: gcnscriptstarter.grb,v 1.7 2005-01-20 16:26:29 cjm Exp $"
 GCN_SCRIPT_STARTER_TMP_HOME=/grb/tmp/
 GCN_SCRIPT_STARTER_SCRIPT_HOME=/grb/bin/tocs_commands
 GCN_SCRIPT_STARTER_OUPTUT_FILE=/grb/tmp/gcn_script_starter_output.txt
@@ -13,7 +13,7 @@ GCN_SCRIPT_STARTER_USER=eng
 # SPACECRAFT_FILTER: -all, -HETE, -INTEGRAL, -SWIFT
 GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-all"
 # error box radius in arcseconds (150 = 2.5 arcmins)
-# NB 600 for now - LT is set to try anything during comissioning
+# NB 600 (10 arcmin radius) for now - LT is set to try anything during comissioning
 GCN_SCRIPT_STARTER_MAX_ERROR_BOX="-max_error_box 600"
 # name of script to run. Will be run from $GCN_SCRIPT_STARTER_SCRIPT_HOME
 GCN_SCRIPT_STARTER_SCRIPT="-script ${GCN_SCRIPT_STARTER_SCRIPT_HOME}/gamma_ray_burst_alert"
