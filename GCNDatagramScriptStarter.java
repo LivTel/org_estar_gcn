@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.10 $
+ * @version $Revision: 1.11 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.10 2005-02-09 11:17:13 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.11 2005-02-11 12:24:56 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -1072,6 +1072,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
 			readStuff(12, 17);// Phi, theta, integ_time, spare x 2
 			int solnStatus = inputStream.readInt(); // 18 Type of source found (bitfield)
+			logger.log(1,"Soln Status : 0x"+Integer.toHexString(solnStatus));
 			if((solnStatus & (1<<0))>0)
 				logger.log("Soln Status : A point source was found.");
 			if((solnStatus & (1<<1))>0)
@@ -1560,6 +1561,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.10  2005/02/09 11:17:13  cjm
+// Added type 43 / readHeteGroundAnalysis parsing.
+//
 // Revision 1.9  2005/01/31 11:46:35  cjm
 // Fixed Swift trigger/sequence number.
 // Added soln status bit 6 detection.
