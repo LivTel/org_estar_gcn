@@ -5,10 +5,10 @@
 #
 # chkconfig: 345 95 5
 # description: org.estar.gcn.GCNDatagramScriptStarter startup script.
-#ident	"$Id: gcnscriptstarter.grb,v 1.3 2004-10-21 10:36:34 cjm Exp $"
+#ident	"$Id: gcnscriptstarter.grb,v 1.4 2004-12-20 16:01:31 cjm Exp $"
 GCN_SCRIPT_STARTER_HOME=/grb/bin/tocs_commands
-GCN_SCRIPT_STARTER_PIDFILE=/grb/tmp/gcnscriptstarter.pid
 GCN_SCRIPT_STARTER_OUPTUT_FILE=/grb/tmp/gcn_script_starter_output.txt
+GCN_SCRIPT_STARTER_USER=eng
 # SPACECRAFT_FILTER: -all, -HETE, -INTEGRAL, -SWIFT
 GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-all"
 # error box radius in arcseconds (150 = 2.5 arcmins)
@@ -29,17 +29,14 @@ export LD_LIBRARY_PATH
 
 case "$1" in
 start)
-	/bin/rm -f ${GCN_SCRIPT_STARTER_PIDFILE}
-	cd ${GCN_SCRIPT_STARTER_HOME}
+	su ${GCN_USER} -c "/bin/rm -f ${GCN_SCRIPT_STARTER_PIDFILE}"
 	echo "GCN Script Starter start."
-	java org.estar.gcn.GCNDatagramScriptStarter ${GCN_SCRIPT_STARTER_SPACECRAFT_FILTER} ${GCN_SCRIPT_STARTER_MAX_ERROR_BOX} ${GCN_SCRIPT_STARTER_SCRIPT} 1> ${GCN_SCRIPT_STARTER_OUPTUT_FILE} 2>&1 &
-	echo $! > ${GCN_SCRIPT_STARTER_PIDFILE}
+	su ${GCN_USER} -c "java org.estar.gcn.GCNDatagramScriptStarter ${GCN_SCRIPT_STARTER_SPACECRAFT_FILTER} ${GCN_SCRIPT_STARTER_MAX_ERROR_BOX} ${GCN_SCRIPT_STARTER_SCRIPT} 1> ${GCN_SCRIPT_STARTER_OUPTUT_FILE} 2>&1 &"
 	;;
 stop)
 	echo "GCN Script Starter stop."
-	PID=`cat ${GCN_SCRIPT_STARTER_PIDFILE}`
-	echo "Trying to kill ${PID}."
-	kill ${PID}
+	${GCN_SCRIPT_STARTER_HOME}/killhup.csh org.estar.gcn.GCNDatagramScriptStarter
+	echo "GCN Script Starter cannot be stopped, pid not known."
 	;;
 *)
 	echo "Usage: $0 {start|stop}"
