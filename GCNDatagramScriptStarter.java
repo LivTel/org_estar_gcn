@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.2 $
+ * @version $Revision: 1.3 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.2 2004-12-14 20:56:32 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.3 2005-01-16 21:13:48 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -719,8 +719,14 @@ public class GCNDatagramScriptStarter implements Runnable
 			int burstError   =  inputStream.readInt(); // 11 burst error (arcsec)
 			// burstError is radius of circle (arcsecs) that contains TBD% c.l.  of bursts
 			alertData.setErrorBoxSize((((double)burstError)/60.0));// in arc-min
+			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
+			if(testMpos & (1<<31))
+			{
+				logger.log("Test Notice - Not a real event.");
+				alertData.setAlertType(0); // ensure test notice not propogated as an alert.
+			}
 			logger.log("Burst error: "+((double)burstError)+" arcsec radius.");
-			readStuff(12, 38);// note replace this with more parsing later
+			readStuff(13, 38);// note replace this with more parsing later
 			readTerm(); // 39 - TERM.	 
 		}
 		catch  (Exception e)
@@ -777,7 +783,13 @@ public class GCNDatagramScriptStarter implements Runnable
 			// burstError is radius of circle (arcsecs) that contains TBD% c.l.  of bursts
 			logger.log("Burst error: "+((double)burstError)+" arcsec radius.");
 			alertData.setErrorBoxSize((((double)burstError)/60.0));// in arc-min
-			readStuff(12, 38);// note replace this with more parsing later
+			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
+			if(testMpos & (1<<31))
+			{
+				logger.log("Test Notice - Not a real event.");
+				alertData.setAlertType(0); // ensure test notice not propogated as an alert.
+			}
+			readStuff(13, 38);// note replace this with more parsing later
 			readTerm(); // 39 - TERM.	 
 		}
 		catch  (Exception e)
@@ -831,7 +843,13 @@ public class GCNDatagramScriptStarter implements Runnable
 			int burstError   =  inputStream.readInt(); // 11 burst error (arcsec)
 			logger.log("Burst error: "+((double)burstError)+" arcsec radius.");
 			alertData.setErrorBoxSize((((double)burstError)/60.0));// in arc-min
-			readStuff(12, 38);// note replace this with more parsing later
+			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
+			if(testMpos & (1<<31))
+			{
+				logger.log("Test Notice - Not a real event.");
+				alertData.setAlertType(0); // ensure test notice not propogated as an alert.
+			}
+			readStuff(13, 38);// note replace this with more parsing later
 			readTerm(); // 39 - TERM.
 		}
 		catch  (Exception e)
@@ -1406,6 +1424,10 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.2  2004/12/14 20:56:32  cjm
+// Added Swift XRT and UVOT.
+// Clarification and fixes to error boxs.
+//
 // Revision 1.1  2004/10/19 17:10:06  cjm
 // Initial revision
 //
