@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.16 $
+ * @version $Revision: 1.17 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.16 2005-02-15 15:48:14 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.17 2005-02-17 17:07:06 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -63,7 +63,6 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * The maximum error box (radius) in arcseconds, alerts with error boxs less than this size call the script.
 	 */
 	protected double maxErrorBox = 60*60;
-
 	/**
 	 * Which alerts are passed on to the script.
 	 * @see GCNDatagramAlertData#ALERT_TYPE_HETE
@@ -71,7 +70,18 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see GCNDatagramAlertData#ALERT_TYPE_SWIFT
 	 */
 	protected int allowedAlerts = 0;
-
+	/**
+	 * Bit-mask to run against Swift BAT alert packets.
+	 * If a bit in this bit-mask is set in the swift solnStatus we should NOT allow this packet
+	 * to trigger a script firing.
+	 */
+	protected int swiftSolnStatusRejectMask = 0;
+	/**
+	 * Bit-mask to run against Swift BAT alert packets.
+	 * If a bit in this bit-mask is set the correponding bit in the swift solnStatus MUST be set 
+	 * to trigger a script firing.
+	 */
+	protected int swiftSolnStatusAcceptMask = 0;
 	/**
 	 * Default constructor. Initialises groupAddress to default.
 	 * @exception UnknownHostException Thrown if the default address is unknown
@@ -186,6 +196,32 @@ public class GCNDatagramScriptStarter implements Runnable
 	public void setMaxErrorBox(double d)
 	{
 		maxErrorBox = d;
+	}
+
+	/**
+	 * Method to set the Swift solnStatus accept bit mask.
+	 * Bit-mask to run against Swift BAT alert packets.
+	 * If a bit in this bit-mask is set the correponding bit in the swift solnStatus MUST be set 
+	 * to trigger a script firing.
+	 * @param m An integer representing the mask bits.
+	 * @see #swiftSolnStatusAcceptMask
+	 */
+	public void setSwiftSolnStatusAcceptMask(int m)
+	{
+		swiftSolnStatusAcceptMask = m;
+	}
+
+	/**
+	 * Method to set the Swift solnStatus reject bit mask.
+	 * Bit-mask to run against Swift BAT alert packets.
+	 * If a bit in this bit-mask is set in the swift solnStatus we should NOT allow this packet
+	 * to trigger a script firing.
+	 * @param m An integer representing the mask bits.
+	 * @see #swiftSolnStatusRejectMask
+	 */
+	public void setSwiftSolnStatusRejectMask(int m)
+	{
+		swiftSolnStatusRejectMask = m;
 	}
 
 	// protected methods.
@@ -371,6 +407,41 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("alertFilter stopped propogation of alert: Dec was NULL.");
 			return false;
 		}
+		// special Swift solnStatus (word 18) filtering
+		if((alertData.getAlertType()) == GCNDatagramAlertData.ALERT_TYPE_SWIFT)
+		{
+			// Ensure no bits in swiftSolnStatusAcceptMask are also in
+			// swiftSolnStatusRejectMask, which would be stupid (no Swift alerts would be propogated).
+			if((swiftSolnStatusRejectMask & swiftSolnStatusAcceptMask) != 0)
+			{
+				logger.log("alertFilter detected stupid solnStatus masks : Accept:0x"+
+					   Integer.toHexString(swiftSolnStatusAcceptMask)+"  Reject:0x"+
+					   Integer.toHexString(swiftSolnStatusRejectMask)+".");
+			}
+			else
+			{
+				// If a bit in the reject bit-mask is set in the swift solnStatus 
+				// we should NOT allow this packet to trigger a script firing.
+				if((alertData.getStatus() & swiftSolnStatusRejectMask) != 0)
+				{
+					logger.log("alertFilter stopped propogation of the alert: solnStatus 0x"+
+						   Integer.toHexString(alertData.getStatus())+
+						   " contains bits in reject mask 0x"+
+						   Integer.toHexString(swiftSolnStatusRejectMask)+".");
+					return false;
+				}
+				// If a bit in the accept bit-mask is set the correponding bit in the swift solnStatus 
+				// MUST be set to trigger a script firing.
+				if((alertData.getStatus() & swiftSolnStatusAcceptMask) != swiftSolnStatusAcceptMask)
+				{
+					logger.log("alertFilter stopped propogation of the alert: solnStatus 0x"+
+						   Integer.toHexString(alertData.getStatus())+
+						   " does NOT contain bits in accept mask 0x"+
+						   Integer.toHexString(swiftSolnStatusAcceptMask)+".");
+					return false;
+				}
+			}// end if swift solnStatus bitmasks are not stupid
+		}// end if swift
 		return true;
 	}
 
@@ -1118,16 +1189,15 @@ public class GCNDatagramScriptStarter implements Runnable
 			readStuff(12, 17);// Phi, theta, integ_time, spare x 2
 			int solnStatus = inputStream.readInt(); // 18 Type of source found (bitfield)
 			logger.log("Soln Status : 0x"+Integer.toHexString(solnStatus));
+			alertData.setStatus(solnStatus); // set alert data status bits to solnStatus
 			if((solnStatus & (1<<0))>0)
 				logger.log("Soln Status : A point source was found.");
 			if((solnStatus & (1<<1))>0)
 				logger.log("Soln Status : It is a GRB.");
-			else
-				logger.log("Soln Status : It is NOT a GRB?!.");
 			if((solnStatus & (1<<2))>0)
 				logger.log("Soln Status : It is an interesting source.");
 			if((solnStatus & (1<<3))>0)
-				logger.log("Soln Status : It is a catalogue source.");
+				logger.log("Soln Status : It is a flight catalogue source.");
 			if((solnStatus & (1<<4))>0)
 				logger.log("Soln Status : It is an image trigger.");
 			else
@@ -1135,9 +1205,15 @@ public class GCNDatagramScriptStarter implements Runnable
 			if((solnStatus & (1<<5))>0)
 				logger.log("Soln Status : It is defintely not a GRB (ground-processing assigned).");
 			if((solnStatus & (1<<6))>0)
-				logger.log("Soln Status : It is probably not a GRB (High background level).");
+				logger.log("Soln Status : It is probably not a GRB (high background level).");
 			if((solnStatus & (1<<7))>0)
+				logger.log("Soln Status : It is probably not a GRB (low image significance).");
+			if((solnStatus & (1<<8))>0)
+				logger.log("Soln Status : It is a ground catalogue source.");
+			if((solnStatus & (1<<9))>0)
 				logger.log("Soln Status : It is an X-ray burster (automated ground assignment).");
+			if((solnStatus & (1<<10))>0)
+				logger.log("Soln Status : It is an AGN source.");
 			readStuff(19, 38);// note replace this with more parsing later
 			readTerm(); // 39 - TERM.
 		}
@@ -1150,6 +1226,7 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	/**
 	 * Swift XRT position (Type 67,SWIFT_GRB_XRT_POSITION).
+	 * @see #swiftSolnStatusAcceptMask
 	 */
 	public void readSwiftXrtGRBPosition()
 	{
@@ -1194,6 +1271,12 @@ public class GCNDatagramScriptStarter implements Runnable
 			// Initially, hardwired to 9".
 			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
 			logger.log("Error Box Radius (arcmin): "+((((double)burstError)*60.0)/10000.0));
+			// alertFilter checks SWIFT alerts to ensure the status (Swift BAT solnStatus (word 18))
+			// has the correct bits set. XRT alerts don't have solnStatus bits, but we must set
+			// the status bits to fool alertFilter. We set to swiftSolnStatusAcceptMask to should
+			// always pass the test, assuming a bit in swiftSolnStatusAcceptMask is NOT also in
+			// swiftSolnStatusRejectMask, which would be stupid (no Swift alerts would be propogated).
+			alertData.setStatus(swiftSolnStatusAcceptMask); // set alert data status bits to solnStatus
 			readStuff(12, 38);// X_TAM, Amp_Wave, misc, det_sig plus lots of spares.
 			readTerm(); // 39 - TERM.
 		}
@@ -1206,6 +1289,7 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	/**
 	 * Swift XRT position (Type 81,SWIFT_UVOT_POSITION).
+	 * @see #swiftSolnStatusAcceptMask
 	 */
 	public void readSwiftUvotGRBPosition()
 	{
@@ -1251,6 +1335,12 @@ public class GCNDatagramScriptStarter implements Runnable
 			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
 			logger.log("Error Box Radius (arcmin): "+((((double)burstError)*60.0)/10000.0));
 			readStuff(12, 38);// misc plus lots of spares.
+			// alertFilter checks SWIFT alerts to ensure the status (Swift BAT solnStatus (word 18))
+			// has the correct bits set. UVOT alerts don't have solnStatus bits, but we must set
+			// the status bits to fool alertFilter. We set to swiftSolnStatusAcceptMask to should
+			// always pass the test, assuming a bit in swiftSolnStatusAcceptMask is NOT also in
+			// swiftSolnStatusRejectMask, which would be stupid (no Swift alerts would be propogated).
+			alertData.setStatus(swiftSolnStatusAcceptMask); // set alert data status bits to solnStatus
 			readTerm(); // 39 - TERM.
 		}
 		catch  (Exception e)
@@ -1301,6 +1391,8 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see #setMaxErrorBox
 	 * @see #setAllowedAlerts
 	 * @see #addAllowedAlerts
+	 * @see #swiftSolnStatusRejectMask
+	 * @see #swiftSolnStatusAcceptMask
 	 * @see GCNDatagramAlertData#ALERT_TYPE_HETE
 	 * @see GCNDatagramAlertData#ALERT_TYPE_INTEGRAL
 	 * @see GCNDatagramAlertData#ALERT_TYPE_SWIFT
@@ -1425,6 +1517,68 @@ public class GCNDatagramScriptStarter implements Runnable
 			{
 				addAllowedAlerts(GCNDatagramAlertData.ALERT_TYPE_SWIFT);
 			}
+			else if(args[i].equals("-sssam")||args[i].equals("-swift_soln_status_accept_mask"))
+			{
+				if((i+1) < args.length)
+				{
+					try
+					{
+						// if specified as hex
+						if(args[i+1].startsWith("0x"))
+						{
+							// parse as hex, removing "0x"
+							intValue = Integer.parseInt(args[i+1].substring(2),16);
+						}
+						else
+							intValue = Integer.parseInt(args[i+1]);
+						setSwiftSolnStatusAcceptMask(intValue);
+					}
+					catch(Exception e)
+					{
+						System.err.println("GCNDatagramScriptStarter:Parsing accept mask :"+
+								   args[i+1]+" failed:"+e);
+						e.printStackTrace(System.err);
+						System.exit(3);
+					}
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNDatagramScriptStarter:-sssrm requires a integer mask.");
+					System.exit(4);
+				}
+			}
+			else if(args[i].equals("-sssrm")||args[i].equals("-swift_soln_status_reject_mask"))
+			{
+				if((i+1) < args.length)
+				{
+					try
+					{
+						// if specified as hex
+						if(args[i+1].startsWith("0x"))
+						{
+							// parse as hex, removing "0x"
+							intValue = Integer.parseInt(args[i+1].substring(2),16);
+						}
+						else
+							intValue = Integer.parseInt(args[i+1]);
+						setSwiftSolnStatusRejectMask(intValue);
+					}
+					catch(Exception e)
+					{
+						System.err.println("GCNDatagramScriptStarter:Parsing reject mask :"+
+								   args[i+1]+" failed:"+e);
+						e.printStackTrace(System.err);
+						System.exit(3);
+					}
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNDatagramScriptStarter:-sssrm requires a integer mask.");
+					System.exit(4);
+				}
+			}
 			else
 			{
 				System.err.println("GCNDatagramScriptStarter: Unknown argument "+args[i]+".");
@@ -1444,13 +1598,18 @@ public class GCNDatagramScriptStarter implements Runnable
 				   "-Dhttp.proxyPort=8080 GCNDatagramScriptStarter \n"+
 				   "\t[-port <n>][-group_address <address>]"+
 				   "\t[-script <filename>][-all][-hete][-integral][-swift]\n"+
-				   "\t[-max_error_box|-meb <arcsecs>]");
+				   "\t[-max_error_box|-meb <arcsecs>]"+
+				   "\t[-swift_soln_status_accept_mask|-sssam <bit mask>]"+
+				   "\t[-swift_soln_status_reject_mask|-sssrm <bit mask>]");
 		System.out.println("-script specifies the script/program to call on a successful alert.");
 		System.out.println("-all specifies to call the script for all types of alerts.");
 		System.out.println("-hete specifies to call the script for HETE alerts.");
 		System.out.println("-integral specifies to call the script for INTEGRAL alerts.");
 		System.out.println("-swift specifies to call the script for SWIFT alerts.");
 		System.out.println("-max_error_box means only call the script when the error box (radius) is less than that size.");
+		System.out.println("-sssam sets the Swift solnStatus bits that MUST be present for the script to be started.");
+		System.out.println("-sssrm sets the Swift solnStatus bits that MUST NOT be present for the script to be started.");
+		System.out.println("-sssam and -sssrm can be specified in hexidecimal using the '0x' prefix.");
 	}
 
 	// static main
@@ -1615,6 +1774,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.16  2005/02/15 15:48:14  cjm
+// Added Swift error box logging.
+//
 // Revision 1.15  2005/02/15 14:48:23  cjm
 // Added HETE tests for bra and bdec of -999.999 degrees.
 //
