@@ -1,5 +1,5 @@
 // GCNSwiftClient.java
-// $Header: /home/cjm/cvs/org_estar_gcn/GCNSwiftClient.java,v 1.3 2005-02-11 18:43:02 cjm Exp $
+// $Header: /home/cjm/cvs/org_estar_gcn/GCNSwiftClient.java,v 1.4 2005-02-14 16:09:21 cjm Exp $
 package org.estar.gcn;
 
 import java.io.*;
@@ -19,7 +19,7 @@ public class GCNSwiftClient extends Thread
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNSwiftClient.java,v 1.3 2005-02-11 18:43:02 cjm Exp $";
+	public final static String RCSID = "$Id: GCNSwiftClient.java,v 1.4 2005-02-14 16:09:21 cjm Exp $";
 	/**
 	 * Integer used to describe alert type.
 	 */
@@ -297,7 +297,7 @@ public class GCNSwiftClient extends Thread
 					alertType = ALERT_TYPE_XRT;
 				else
 				{
-					System.err.println("GCNSwiftClient:XTT alert type specified but alert type already:"+alertType);
+					System.err.println("GCNSwiftClient:XRT alert type specified but alert type already:"+alertType);
 					System.exit(17);
 				}
 			}
@@ -344,6 +344,30 @@ public class GCNSwiftClient extends Thread
 				System.exit(23);
 			}
 		}
+		else if(alertType == ALERT_TYPE_XRT)
+		{
+			if(ra == null)
+			{
+				System.err.println("GCNSwiftClient: No ra defined.");
+				System.exit(21);
+			}
+			if(dec == null)
+			{
+				System.err.println("GCNSwiftClient: No dec defined.");
+				System.exit(22);
+			}
+			try
+			{
+				client.connect();
+				client.sendSwiftXRTAlert(ra, dec, error, date, trignum, mesgnum);
+			} 
+			catch (IOException iox)
+			{
+				System.err.println("Error opening connection to server: "+iox);
+				iox.printStackTrace(System.err);
+				System.exit(23);
+			}
+		}
 		else
 		{
 			System.err.println("Alert type: "+alertType+" not supported yet.");
@@ -364,7 +388,8 @@ public class GCNSwiftClient extends Thread
 				   "\n -date  <date> Date of the burst (EEE dd MMM yyyy HH:mm:ss)."+
 				   "\n -bat          Send a Swift BAT alert."+
 				   "\n -trigno <num> Burst trigger number."+
-				   "\n -mesgno <num> Message sequence number (for trigno)");
+				   "\n -mesgno <num> Message sequence number (for trigno)"+
+				   "\n -xrt          Send a Swift XRT alert.");
 	}
 
 	public GCNSwiftClient(String host, int port, long delay)
@@ -474,6 +499,9 @@ public class GCNSwiftClient extends Thread
 		}
 	}
 
+	/**
+	 * Inner class to send a Swift BAT alert.
+	 */
 	class SwiftBatAlert
 	{
 		double error;
@@ -484,6 +512,9 @@ public class GCNSwiftClient extends Thread
 		int mesgNum;
 		Date date;
 
+		/**
+		 * Constructor for Swift BAT alerts.
+		 */
 		SwiftBatAlert(RA ra, Dec dec, double error, Date date, int trigNum, int mesgNum)
 		{
 			this.burstRA = (int)((ra.toArcSeconds()/3600.0)*10000.0);
@@ -493,7 +524,11 @@ public class GCNSwiftClient extends Thread
 			this.mesgNum = mesgNum;
 			this.date = date;
 		}
-	
+
+		/**
+		 * Method to write out a BAT alert packet to byteDataOut.
+		 * @see #byteDataOut
+		 */
 		public void write() throws IOException
 		{
 			Calendar calendar = Calendar.getInstance();
@@ -501,7 +536,7 @@ public class GCNSwiftClient extends Thread
 			long now = date.getTime();
 			writeHdr(61, seq);// 0, 1, 2
 			writeSod(now); // 3
-			int tsn = (mesgNum << 16) | trigNum;
+			int tsn = (mesgNum << 24) | trigNum;
 			byteDataOut.writeInt(tsn); // 4
 			byteDataOut.writeInt(11910+calendar.get(Calendar.DAY_OF_MONTH)); // 5 - burst_tjd
 			// writeInt(burstTJD); // 5
@@ -518,6 +553,88 @@ public class GCNSwiftClient extends Thread
 			int solnStatus = ((1<<0)|(1<<1)|(1<<2)); // point source, GRB, interesting, (rate trigger).
 			byteDataOut.writeInt(solnStatus); // 18
 			writeStuff(19,38); // 19-38
+			writeTerm(); // 39
+			// write whole packet out in one go.
+			dataOut.write(byteOut.toByteArray());
+			dataOut.flush();
+		}
+	}
+
+	/**
+	 * Inner class to send a Swift XRT alert.
+	 */
+	class SwiftXrtAlert
+	{
+		double error;
+		int type;
+		int burstRA;
+		int burstDec;
+		int trigNum;
+		int mesgNum;
+		Date date;
+
+		/**
+		 * Constructor for Swift XRT alerts.
+		 */
+		SwiftXrtAlert(RA ra, Dec dec, double error, Date date, int trigNum, int mesgNum)
+		{
+			this.burstRA = (int)((ra.toArcSeconds()/3600.0)*10000.0);
+			this.burstDec = (int)((dec.toArcSeconds()/3600.0)*10000.0);
+			this.error = error;
+			this.trigNum = trigNum;
+			this.mesgNum = mesgNum;
+			this.date = date;
+		}
+
+		/**
+		 * Method to write out a XRT alert packet to byteDataOut.
+		 * @see #byteDataOut
+		 */
+		public void write() throws IOException
+		{
+			Calendar calendar = Calendar.getInstance();
+			calendar.setTime(date);
+			long now = date.getTime();
+			writeHdr(67, seq);// 0, 1, 2
+			writeSod(now); // 3
+			int tsn = (mesgNum << 24) | trigNum;
+			byteDataOut.writeInt(tsn); // 4
+			// tjd : 11910 @ 01/01/2001
+			// 11545 @ 01/01/2000 ?
+			int burstTJD = 11545+
+				((((calendar.get(Calendar.YEAR)-2000)/4)*3)*365)+
+				(((calendar.get(Calendar.YEAR)-2000)/4)*366)+
+				calendar.get(Calendar.DAY_OF_YEAR);
+			//int burstTJD = 11545+
+			//	((calendar.get(Calendar.YEAR)-2000)*365)+
+			//	calendar.get(Calendar.DAY_OF_YEAR);
+			byteDataOut.writeInt(burstTJD); // 5 - burst_tjd
+			writeSod(now); // 6
+			byteDataOut.writeInt(burstRA); // 7
+			byteDataOut.writeInt(burstDec); // 8
+			int burstFlux = 1000;
+			byteDataOut.writeInt(burstFlux); // 9
+			byteDataOut.writeInt(0); // 10 - spare
+			// error contains 90% of the afterglow bursts
+			int errorInt = ((int)((error*10000)/60)); // error in arcmin, int radius in degrees*10000
+			byteDataOut.writeInt(errorInt); // 11
+			// 12-15 X_TAM_I1,Y_TAM_I1,X_TAM_I2,Y_TAM_I2 
+			// 16 spare
+			writeStuff(12,16); // 12-17
+			// 17 Amp_Wave (dual_int) (bits 0-7 - waveform number of readout (134)
+			//                        (bits 8-15 - amplifier used (2)).
+			int ampWave = 134 + (2<<8); // waveform number / amplifier
+			byteDataOut.writeInt(ampWave); // 17
+			int triggerId = 0; // trigger id (bit 0 set - this is a cosmic ray).
+			byteDataOut.writeInt(triggerId); // 18
+			// misc (2^30 If set, notice is ground generated, else flight generated).
+			// misc (2^31 If set, there was a CRC error).
+			int misc = 0; // misc
+			byteDataOut.writeInt(misc); // 19
+			byteDataOut.writeInt(0); // 20 - spare
+			int detSignif = 0; // detector significance (centi-sigma)
+			byteDataOut.writeInt(detSignif); // 21
+			writeStuff(22,38); // 19-38
 			writeTerm(); // 39
 			// write whole packet out in one go.
 			dataOut.write(byteOut.toByteArray());
@@ -542,17 +659,33 @@ public class GCNSwiftClient extends Thread
 			dataOut.flush();	  
 		}
 	}
-       
+
+	/**
+	 * Method to send a Swift BAT alert.
+	 */
 	public void sendSwiftBATAlert(RA ra,Dec dec, double error, Date date, int trigNum, int mesgNum) 
 		throws IOException
 	{
 		SwiftBatAlert alert = new SwiftBatAlert(ra, dec, error, date, trigNum, mesgNum);
 		alert.write();
 	}
+
+	/**
+	 * Method to send a Swift XRT alert.
+	 */
+	public void sendSwiftXRTAlert(RA ra,Dec dec, double error, Date date, int trigNum, int mesgNum) 
+		throws IOException
+	{
+		SwiftXrtAlert alert = new SwiftXrtAlert(ra, dec, error, date, trigNum, mesgNum);
+		alert.write();
+	}
 }
 
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.3  2005/02/11 18:43:02  cjm
+// Added new solnStatus bits.
+//
 // Revision 1.2  2005/02/03 10:22:27  cjm
 // Lots of changes.
 //
