@@ -5,7 +5,7 @@
 #
 # chkconfig: 345 95 5
 # description: org.estar.gcn.GCNDatagramScriptStarter startup script.
-#ident	"$Id: gcnscriptstarter.grb,v 1.7 2005-01-20 16:26:29 cjm Exp $"
+#ident	"$Id: gcnscriptstarter.grb,v 1.8 2005-02-17 17:35:37 cjm Exp $"
 GCN_SCRIPT_STARTER_TMP_HOME=/grb/tmp/
 GCN_SCRIPT_STARTER_SCRIPT_HOME=/grb/bin/tocs_commands
 GCN_SCRIPT_STARTER_OUPTUT_FILE=/grb/tmp/gcn_script_starter_output.txt
@@ -17,6 +17,29 @@ GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-all"
 GCN_SCRIPT_STARTER_MAX_ERROR_BOX="-max_error_box 600"
 # name of script to run. Will be run from $GCN_SCRIPT_STARTER_SCRIPT_HOME
 GCN_SCRIPT_STARTER_SCRIPT="-script ${GCN_SCRIPT_STARTER_SCRIPT_HOME}/gamma_ray_burst_alert"
+# misc command line arguments
+# Note, probably doesn't work on ltccd1, --short does not work!
+# Also HOSTTYPE not present in /etc/init.d scripts?
+hostname=`/bin/hostname --short`
+case ${hostname} in
+    "ltproxy")
+	GCN_SCRIPT_STARTER_COMMAND_ARGS=""
+	;;
+    "ftnproxy")
+	# reject Swift BAT alerts with bits 3, or 5 or 8 set (= 0x128).
+	# 3 = flt_cat_src, 5 = def_not_grb, 8 = gnd_cat_src
+	GCN_SCRIPT_STARTER_COMMAND_ARGS="-swift_soln_status_reject_mask 0x128"
+	;;
+    "ftsproxy")
+	# reject Swift BAT alerts with bits 3, or 5 or 8 set (= 0x128).
+	# 3 = flt_cat_src, 5 = def_not_grb, 8 = gnd_cat_src
+	GCN_SCRIPT_STARTER_COMMAND_ARGS="-swift_soln_status_reject_mask 0x128"
+	;;
+    *)
+	echo "Unknown hostname ${hostname}."
+	exit 1
+	;;
+esac
 # Some .sh equivalent stuff of environment in
 # lt_environment.csh
 CLASSPATH="."
@@ -36,7 +59,7 @@ start)
 	# Logger logs to current dir - make it grb temp dir.
 	cd ${GCN_SCRIPT_STARTER_TMP_HOME}
 	# Note we now assume ${GCN_SCRIPT_STARTER_USER} (eng) is running tcsh, not bash
-	su ${GCN_SCRIPT_STARTER_USER} -c "(java org.estar.gcn.GCNDatagramScriptStarter ${GCN_SCRIPT_STARTER_SPACECRAFT_FILTER} ${GCN_SCRIPT_STARTER_MAX_ERROR_BOX} ${GCN_SCRIPT_STARTER_SCRIPT} > ${GCN_SCRIPT_STARTER_OUPTUT_FILE}) >& ${GCN_SCRIPT_STARTER_OUPTUT_FILE} &"
+	su ${GCN_SCRIPT_STARTER_USER} -c "(java org.estar.gcn.GCNDatagramScriptStarter ${GCN_SCRIPT_STARTER_SPACECRAFT_FILTER} ${GCN_SCRIPT_STARTER_MAX_ERROR_BOX} ${GCN_SCRIPT_STARTER_SCRIPT} ${GCN_SCRIPT_STARTER_COMMAND_ARGS} > ${GCN_SCRIPT_STARTER_OUPTUT_FILE}) >& ${GCN_SCRIPT_STARTER_OUPTUT_FILE} &"
 	;;
 stop)
 	echo "GCN Script Starter stop."
