@@ -1,0 +1,103 @@
+#!/bin/csh
+# test script called by GCNDatagramScriptStarter.
+# has arguments:
+# -ra  <ra> -dec <dec> -epoch <epoch> -error_box <error_box> -trigger_number <tnum> -sequence_number <snum> -grb_date <date> -notice_date <date>
+#
+# Parse arguments
+#
+set next_argument = ""
+set spacecraft = "UNKNOWN"
+set ra = "UNKNOWN"
+set dec = "UNKNOWN"
+set epoch = "UNKNOWN"
+set error_box = "UNKNOWN"
+set trigger_number = "UNKNOWN"
+set sequence_number = "UNKNOWN"
+set grb_date = "UNKNOWN"
+set notice_date = "UNKNOWN"
+foreach argument ( $argv )
+    switch ( $argument )
+	case "-dec"
+	    set next_argument = "dec"
+	    breaksw
+	case "-epoch"
+	    set next_argument = "epoch"
+	    breaksw
+	case "-error_box"
+	    set next_argument = "error_box"
+	    breaksw
+	case "-grb_date"
+	    set next_argument = "grb_date"
+	    breaksw
+	case "-help":
+	    echo "$0 -ra  <ra> -dec <dec> -epoch <epoch> -error_box <error_box> -trigger_number <tnum> -sequence_number <snum> -grb_date <date> -notice_date <date>"
+	    exit 0
+	    breaksw
+	case "-notice_date"
+	    set next_argument = "notice_date"
+	    breaksw
+	case "-ra"
+	    set next_argument = "ra"
+	    breaksw
+	case "-sequence_number"
+	    set next_argument = "sequence_number"
+	    breaksw
+	case "-trigger_number"
+	    set next_argument = "trigger_number"
+	    breaksw
+	case "-HETE"
+            set spacecraft = "HETE"
+	    breaksw
+	case "-INTEGRAL"
+            set spacecraft = "INTEGRAL"
+	    breaksw
+	case "-SWIFT"
+            set spacecraft = "SWIFT"
+	    breaksw
+	default:
+	    if( "${next_argument}" == "ra" ) then
+		set ra = "${argument}"
+		set next_argument = ""
+	    else if( "${next_argument}" == "dec" ) then
+		set dec = "${argument}"
+		set next_argument = ""
+	    else if( "${next_argument}" == "epoch" ) then
+		set epoch = "${argument}"
+		set next_argument = ""
+	    else if( "${next_argument}" == "error_box" ) then
+		set error_box = "${argument}"
+		set next_argument = ""
+	    else if( "${next_argument}" == "grb_date" ) then
+		set grb_date = "${argument}"
+		set next_argument = ""
+	    else if( "${next_argument}" == "notice_date" ) then
+		set notice_date = "${argument}"
+		set next_argument = ""
+	    else if( "${next_argument}" == "trigger_number" ) then
+		set trigger_number = "${argument}"
+		set next_argument = ""
+	    else if( "${next_argument}" == "sequence_number" ) then
+		set sequence_number = "${argument}"
+		set next_argument = ""
+	    else 
+		echo "Illegal argument ${argument} detected."
+		exit 1
+	    endif
+    endsw
+end
+echo "${spacecraft} ${trigger_number}:${sequence_number} ${ra} ${dec} ${epoch} ${error_box} ${grb_date} ${notice_date}"
+#
+# hopefully we have picked up the environment.sh in .bashrc
+#
+#
+# Initialise tocs environment
+#
+(initialise_noticeboard)
+echo "Initialised noticeboard."
+#
+# Convert ra/dec to J2000
+#
+
+#
+# $Log: not supported by cvs2svn $
+#

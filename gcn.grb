@@ -1,0 +1,38 @@
+#!/sbin/sh
+#
+# Liverpool John Moores University
+#
+# GCN_Server startup script. This is a simplified version for use on ltccd1,
+# the full version is available for deployments in ~dev/src/planetarium/scripts/ 
+# It runs the /etc/init.d/gcn_loop_start script, which runs the GCN_Server in a restart loop
+#ident	"$Id: gcn.grb,v 1.1 2004-10-19 17:12:27 cjm Exp $"
+GCN_PIDFILE=/grb/bin/planetarium/java/gcn.pid
+GCN_LOOP_PIDFILE=/grb/bin/planetarium/java/gcnloop.pid
+case "$1" in
+start)
+	/bin/rm -f ${GCN_PIDFILE}
+	echo "Loop GCN Server start."
+	/etc/init.d/gcn_loop_start&
+	echo $! > ${GCN_LOOP_PIDFILE}
+	;;
+stop)
+	# kill loop script first to stop restart
+	echo "Loop GCN Server stop."
+	PID=`cat ${GCN_LOOP_PIDFILE}`
+	kill ${PID}
+	echo "GCN Server stop."
+	PID=`cat ${GCN_PIDFILE}`
+	kill ${PID}
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+	;;
+esac
+
+if [ $? != 0 ]; then
+	echo "$status"
+	exit 1
+fi
+exit 0
+

@@ -1,0 +1,52 @@
+#!/sbin/sh
+#
+# Liverpool John Moores University
+#
+#ident	"$Id: gcnscriptstarter.grb,v 1.1 2004-10-19 17:12:27 cjm Exp $"
+GCN_SCRIPT_STARTER_HOME=/grb/bin/tocs_commands
+GCN_SCRIPT_STARTER_PIDFILE=/grb/tmp/gcnscriptstarter.pid
+GCN_SCRIPT_STARTER_OUPTUT_FILE=/grb/tmp/gcn_script_starter_output.txt
+# SPACECRAFT_FILTER: -all, -HETE, -INTEGRAL, -SWIFT
+GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-all"
+# error box radius in arcseconds (150 = 2.5 arcmins)
+GCN_SCRIPT_STARTER_MAX_ERROR_BOX="-max_error_box 150"
+# name of script to run. Will be run from $GCN_SCRIPT_STARTER_HOME
+GCN_SCRIPT_STARTER_SCRIPT="-script gamma_ray_burst_alert"
+# Some .sh equivalent stuff of environment in
+# lt_environment.csh
+CLASSPATH="."
+list=`ls /grb/bin/javalib/*.jar`
+for i in $list; do
+    CLASSPATH=${CLASSPATH}":"$i
+done
+
+LD_LIBRARY_PATH=/grb/bin/lib/${HOSTTYPE}
+export CLASSPATH 
+export LD_LIBRARY_PATH
+
+case "$1" in
+start)
+	/bin/rm -f ${GCN_SCRIPT_STARTER_PIDFILE}
+	cd ${GCN_SCRIPT_STARTER_HOME}
+	echo "GCN Script Starter start."
+	java org.estar.gcn.GCNDatagramScriptStarter ${GCN_SCRIPT_STARTER_SPACECRAFT_FILTER} ${GCN_SCRIPT_STARTER_MAX_ERROR_BOX} ${GCN_SCRIPT_STARTER_SCRIPT} 1> ${GCN_SCRIPT_STARTER_OUPTUT_FILE} 2>&1 &
+	echo $! > ${GCN_SCRIPT_STARTER_PIDFILE}
+	;;
+stop)
+	echo "GCN Script Starter stop."
+	PID=`cat ${GCN_SCRIPT_STARTER_PIDFILE}`
+	echo "Trying to kill ${PID}."
+	kill ${PID}
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+	;;
+esac
+
+if [ $? != 0 ]; then
+	echo "$status"
+	exit 1
+fi
+exit 0
+
