@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.8 $
+ * @version $Revision: 1.9 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.8 2005-01-28 18:41:16 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.9 2005-01-31 11:46:35 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -920,8 +920,8 @@ public class GCNDatagramScriptStarter implements Runnable
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod(); // 3
 			int tsn = inputStream.readInt();   // 4 - trig_seq_num
-			int trigNum = (tsn & 0x0000FFFF);
-			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
+			int trigNum = (tsn & 0x00FFFFFF);
+			int mesgNum = (tsn & 0xFF000000) >> 24;  
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
@@ -967,6 +967,8 @@ public class GCNDatagramScriptStarter implements Runnable
 				logger.log("Soln Status : It is an image trigger.");
 			else
 				logger.log("Soln Status : It is a rate trigger.");
+			if((solnStatus & (1<<5))>0)
+				logger.log("Soln Status : It is defintely not a GRB (ground-processing assigned).");
 			readStuff(19, 38);// note replace this with more parsing later
 			readTerm(); // 39 - TERM.
 		}
@@ -990,8 +992,8 @@ public class GCNDatagramScriptStarter implements Runnable
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod(); // 3
 			int tsn = inputStream.readInt();   // 4 - trig_seq_num
-			int trigNum = (tsn & 0x0000FFFF);
-			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
+			int trigNum = (tsn & 0x00FFFFFF);
+			int mesgNum = (tsn & 0xFF000000) >> 24;  
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
@@ -1439,6 +1441,11 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.8  2005/01/28 18:41:16  cjm
+// Hete update packets now check that BURST_INVALID flag is NOT set,
+// rather than the BURST_VALID flag IS set. i.e. Packets without
+// BURST_INVALID or BURST_VALID flags set are assumed to be valid.
+//
 // Revision 1.7  2005/01/21 14:13:25  cjm
 // Added integral spiacs loggingg.
 //
