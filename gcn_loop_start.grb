@@ -6,13 +6,36 @@
 # GCN_Server startup script. This version is for use on proxy machines,
 # the full version is available for deployments in ~dev/src/planetarium/scripts/ 
 # This is designed to be run from the gcn /etc/init.d startup script.
-#ident	"$Id: gcn_loop_start.grb,v 1.3 2004-10-21 18:13:13 cjm Exp $"
+#ident	"$Id: gcn_loop_start.grb,v 1.4 2005-01-07 18:40:29 cjm Exp $"
 setenv GCN_HOME /grb/bin/planetarium/java
 setenv GCN_PIDFILE /grb/tmp/gcn.pid
 setenv GCN_OUPTUT_FILE /grb/tmp/gcn_output.txt
 setenv GCN_LOOP_OUPTUT_FILE /grb/tmp/gcn_loop_output.txt
 setenv GCN_SERVER_ARGS ""
-#setenv GCN_MAIL_ADDRESSES "cjm@astro.livjm.ac.uk"
+# Configure port number based on machine hostname
+# See: http://gcn.gsfc.nasa.gov/sites_cfg.html , Sites: LT, FTN, FTS
+# Note, probably doesn't work on ltccd1, --short does not work!
+# Also HOSTTYPE not present in /etc/init.d scripts?
+set hostname = `/bin/hostname --short`
+switch ( ${hostname} )
+    case "ltccd1":
+	setenv GCN_PORT_NUMBER "5169"
+	breaksw
+    case "ltproxy":
+	setenv GCN_PORT_NUMBER "5212"
+	breaksw
+    case "ftnproxy":
+	setenv GCN_PORT_NUMBER "5213"
+	breaksw
+    case "ftsproxy":
+	setenv GCN_PORT_NUMBER "5214"
+	breaksw
+    default:
+	echo "Unknown hostname ${hostname}."
+	exit 1
+	breaksw
+endsw
+setenv GCN_SERVER_ARGS "${GCN_SERVER_ARGS} -port ${GCN_PORT_NUMBER}"
 setenv GCN_MAIL_ADDRESSES "cjm@astro.livjm.ac.uk snf@astro.livjm.ac.uk ltops@astro.livjm.ac.uk grb@astro.livjm.ac.uk"
 # Some .sh equivalent stuff of environment in
 # lt_environment.csh
@@ -33,8 +56,8 @@ while ( ${done} == 0 )
   echo $! > ${GCN_PIDFILE}
   set pid = `cat ${GCN_PIDFILE}`
   set date_string = `date +"%Y/%m/%dT%H.%M.%S"`
-  echo "${date_string} GCN Server started with PID ${pid}." >>! ${GCN_LOOP_OUPTUT_FILE}
-  echo "Subject: GCN_Server\n${date_string} GCN Server started with PID ${pid}.\n" | mail ${GCN_MAIL_ADDRESSES}
+  echo "${date_string} GCN Server started on port ${GCN_PORT_NUMBER} with PID ${pid}." >>! ${GCN_LOOP_OUPTUT_FILE}
+  echo "Subject: GCN_Server\n${date_string} GCN Server started on port ${GCN_PORT_NUMBER} with PID ${pid}.\n" | mail ${GCN_MAIL_ADDRESSES}
   wait
   set date_string = `date +"%Y/%m/%dT%H.%M.%S"`
   echo "${date_string} The GCN Server PID ${pid} has stopped." >>! ${GCN_LOOP_OUPTUT_FILE}
