@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.15 $
+ * @version $Revision: 1.16 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.15 2005-02-15 14:48:23 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.16 2005-02-15 15:48:14 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -1114,6 +1114,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			// burst error is radius of circle in degrees*10000 containing TBD% of bursts!
 			// Initially, hardwired to 4 arcmin (0.067 deg) radius.
 			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
+			logger.log("Error Box Radius (arcmin): "+((((double)burstError)*60.0)/10000.0));
 			readStuff(12, 17);// Phi, theta, integ_time, spare x 2
 			int solnStatus = inputStream.readInt(); // 18 Type of source found (bitfield)
 			logger.log("Soln Status : 0x"+Integer.toHexString(solnStatus));
@@ -1192,6 +1193,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			// burst error is radius of circle in degrees*10000 containing 90% of bursts.
 			// Initially, hardwired to 9".
 			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
+			logger.log("Error Box Radius (arcmin): "+((((double)burstError)*60.0)/10000.0));
 			readStuff(12, 38);// X_TAM, Amp_Wave, misc, det_sig plus lots of spares.
 			readTerm(); // 39 - TERM.
 		}
@@ -1247,6 +1249,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			// burst error is radius of circle in degrees*10000 containing 90% of bursts.
 			// Initially, hardwired to 9".
 			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
+			logger.log("Error Box Radius (arcmin): "+((((double)burstError)*60.0)/10000.0));
 			readStuff(12, 38);// misc plus lots of spares.
 			readTerm(); // 39 - TERM.
 		}
@@ -1612,6 +1615,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.15  2005/02/15 14:48:23  cjm
+// Added HETE tests for bra and bdec of -999.999 degrees.
+//
 // Revision 1.14  2005/02/15 11:47:55  cjm
 // Set alert type to 0 (i.e. don't start script) if packet parsing fails.
 //
