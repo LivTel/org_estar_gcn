@@ -1,5 +1,5 @@
 // GCNDatagramAlertData.java
-// $Header: /home/cjm/cvs/org_estar_gcn/GCNDatagramAlertData.java,v 1.2 2005-02-17 17:35:57 cjm Exp $
+// $Header: /home/cjm/cvs/org_estar_gcn/GCNDatagramAlertData.java,v 1.3 2005-03-01 18:51:07 cjm Exp $
 package org.estar.gcn;
 
 import java.lang.*;
@@ -12,14 +12,14 @@ import org.estar.astrometry.*;
 /**
  * Class holding data to do with a single GCN alert.
  * @author Chris Mottram
- * @version $Revision: 1.2 $
+ * @version $Revision: 1.3 $
  */
 public class GCNDatagramAlertData
 {
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramAlertData.java,v 1.2 2005-02-17 17:35:57 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramAlertData.java,v 1.3 2005-03-01 18:51:07 cjm Exp $";
 	/**
 	 * Alert type.
 	 */
@@ -80,6 +80,10 @@ public class GCNDatagramAlertData
 	 * Currently only used for Swift BAT alerts where it is filled with solnStatus bits to filter on.
 	 */
 	protected int status = 0;
+	/**
+	 * Whether this alert is a real alert (false), or one generated for testing purposes (true).
+	 */
+	protected boolean test = false;
 
 	/**
 	 * Default constructor.
@@ -357,6 +361,26 @@ public class GCNDatagramAlertData
 		return status;
 	}
 
+	/**
+	 * Set whether this alert is a real alert or a test.
+	 * @param b Should be false if this is a real alert, true if this is a test alert.
+	 * @see #test
+	 */
+	public void setTest(boolean b)
+	{
+		test = b;
+	}
+
+	/**
+	 * Get whether this alert is real, or a test one.
+	 * @return true is this is a test alert, else false.
+	 * @see #test
+	 */
+	public boolean getTest()
+	{
+		return test;
+	}
+
 	public String toString()
 	{
 		return toString("");
@@ -383,6 +407,9 @@ public class GCNDatagramAlertData
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.2  2005/02/17 17:35:57  cjm
+// Added status variable.
+//
 // Revision 1.1  2004/10/19 17:10:06  cjm
 // Initial revision
 //
