@@ -15,11 +15,15 @@ import org.estar.astrometry.*;
  * The class runs a script if  the packet contains an alert it wants to respond to.
  * The script is started with parameters as follows:
  * <pre>
- * -ra  <ra> -dec <dec> -epoch <epoch> -error_box <error_box> -trigger_number <tnum> -sequence_number <snum> -grb_date <date> -notice_date <date>
+ * -ra  &lt;ra&gt; -dec &lt;dec&gt; -epoch &lt;epoch&gt; -error_box &lt;error_box&gt; -trigger_number &lt;tnum&gt; -sequence_number &lt;snum&gt; -grb_date &lt;date&gt; -notice_date &lt;date&gt;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
+ * <br>
+ * The server also supports a command socket, which can be used to configure the GCN Datagram Script Starter.
+ * For details of the command socket command set see doControlCommand.
  * @author Chris Mottram
- * @version $Revision: 1.17 $
+ * @version $Revision: 1.18 $
+ * @see #doControlCommand
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,20 +31,40 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.17 2005-02-17 17:07:06 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.18 2005-03-01 18:56:29 cjm Exp $";
 	/**
-	 * The default port to listen on, as agreed by Steve.
+	 * The default multicast port to listen on, as agreed by Steve.
 	 */
-	public final static int DEFAULT_PORT = 2005;
+	public final static int DEFAULT_MULTICAST_PORT = 2005;
 	/**
-	 * Default group address. (224.g.r.b).
+	 * The default control port to listen on.
+	 */
+	public final static int DEFAULT_CONTROL_PORT = 2006;
+	/**
+	 * Default group address for multicast socket. (224.g.r.b).
 	 */
 	public final static String DEFAULT_GROUP_ADDRESS = "224.103.114.98";
+	/**
+	 * Length of buffer used for receiving datagram packets.
+	 */
 	public final static int PACKET_LENGTH = 160;
+	/**
+	 * Boolean used to determine when to quit the run method.
+	 */
 	protected boolean quit = false;
-	protected MulticastSocket socket = null;
+	/**
+	 * Socket that receives multicast UDP packets from GCN_Server.
+	 */
+	protected MulticastSocket multicastSocket = null;
+	/**
+	 * The multicast packet containing the received data.
+	 */
 	protected DatagramPacket packet = null;
-	protected DataInputStream inputStream = null;
+	/**
+	 * The input stream used to interate through the bytes of the
+	 * datagram packet.
+	 */
+	protected DataInputStream packetInputStream = null;
 	/** 
 	 *The InetAddress of the Multicast channel to listen to.
 	 */
@@ -48,9 +72,16 @@ public class GCNDatagramScriptStarter implements Runnable
 	/** 
 	 * The port to attach to.
 	 */
-	protected int port = DEFAULT_PORT;
-	protected byte packetBuff[];
+	protected int multicastPort = DEFAULT_MULTICAST_PORT;
+	/**
+	 * Object containing the information parsed from the datagram packet,
+	 * used to specify the parameters to the script invocation.
+	 */
 	protected GCNDatagramAlertData alertData = null;
+	/**
+	 * Object to syncronize on, when accessing/changing the alertData contents.
+	 */
+	protected Object alertDataLock = new Object();
 	/**
 	 * Logger to log to.
 	 */
@@ -83,6 +114,25 @@ public class GCNDatagramScriptStarter implements Runnable
 	 */
 	protected int swiftSolnStatusAcceptMask = 0;
 	/**
+	 * The port to run the control port on.
+	 * @see #DEFAULT_CONTROL_PORT
+	 */
+	protected int controlServerPort = DEFAULT_CONTROL_PORT;
+	/**
+	 * The control server thread instance.
+	 */
+	protected ControlServerThread controlServerThread = null;
+	/**
+	 * Boolean specifying whether to start the script when an alert is detected on the Datagram socket.
+	 */
+	protected boolean enableSocketAlerts = true;
+	/**
+	 * Boolean specifying whether to start the script when a gamma_ray_burst_alert command is sent 
+	 * over the control socket.
+	 */
+	protected boolean enableManualAlerts = true;
+
+	/**
 	 * Default constructor. Initialises groupAddress to default.
 	 * @exception UnknownHostException Thrown if the default address is unknown
 	 * @see #groupAddress
@@ -96,12 +146,28 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	/**
 	 * Run method.
+	 * <ul>
+	 * <li>Initialise quit to false.
+	 * <li>Initialise socket (initSocket).
+	 * <li>Start a control server thread (startControlServerThread).
+	 * <li>While quit is not true:
+	 *     <ul>
+	 *     <li>Get a datagram packet (receivePacket).
+	 *     <li>Acquire the alertData lock (alertDataLock).
+	 *     <li>Process the contents of the datagram packet (processData).
+	 *     <li>Check whether the packet contents are filtered out or not (alertFilter).
+	 *     <li>If the packet contents are not filtered out, start the script (startScript).
+	 *     </ul>
+	 * </ul>
+	 * Any exceptions are caught and an error message printed. But this will cause the script starter to terminate.
 	 * @see #quit
 	 * @see #initSocket
+	 * @see #startControlServerThread
 	 * @see #receivePacket
 	 * @see #processData
 	 * @see #alertFilter
 	 * @see #startScript
+	 * @see #alertDataLock
 	 */
 	public void run()
 	{
@@ -111,12 +177,18 @@ public class GCNDatagramScriptStarter implements Runnable
 				logger.log(this.getClass().getName()+":run:Started.");
 			quit = false;
 			initSocket();
+			startControlServerThread();
 			while(quit == false)
 			{
 				receivePacket();
-				processData();
-				if(alertFilter())
-					startScript();
+				logger.log(this.getClass().getName()+":run:Acquiring alert data lock.");
+				synchronized(alertDataLock)
+				{
+					processData();
+					if(alertFilter())
+						startScript();
+				}
+				logger.log(this.getClass().getName()+":run:Released alert data lock.");
 			}
 		}
 		catch(Exception e)
@@ -140,11 +212,21 @@ public class GCNDatagramScriptStarter implements Runnable
 		quit = true;
 	}
 
-	public void setPort(int p)
+	/**
+	 * Set the port used for the multicast socket.
+	 * @param p The port number.
+	 * @see #multicastPort
+	 */
+	public void setMulticastPort(int p)
 	{
-		port = p;
+		multicastPort = p;
 	}
 
+	/**
+	 * Set the address used for the multicast group address.
+	 * @param i The InetAddress.
+	 * @see #groupAddress
+	 */
 	public void setGroupAddress(InetAddress i)
 	{
 		groupAddress = i;
@@ -226,41 +308,55 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	// protected methods.
 	/**
-	 * Initialsie connection.
-	 * @see #port
-	 * @see #socket
+	 * Initialise connection.
+	 * @see #multicastPort
+	 * @see #multicastSocket
 	 * @see #groupAddress
 	 */
 	protected void initSocket() throws Exception
 	{
-		logger.log(this.getClass().getName()+":initSocket:port = "+port+" Group Address: "+
+		logger.log(this.getClass().getName()+":initSocket:port = "+multicastPort+" Group Address: "+
 				  groupAddress);
-		socket = new MulticastSocket(port);
-		socket.joinGroup(groupAddress);
+		multicastSocket = new MulticastSocket(multicastPort);
+		multicastSocket.joinGroup(groupAddress);
 	}
 
 	/**
 	 * Receive packet.
-	 * @see #packetBuff
 	 * @see #PACKET_LENGTH
 	 * @see #packet
-	 * @see #socket
+	 * @see #multicastSocket
 	 */
 	protected void receivePacket() throws Exception
 	{
+		byte packetBuff[];
+
 		logger.log(this.getClass().getName()+":receivePacket:Started.");
 		packetBuff = new byte[PACKET_LENGTH];
 		packet = new DatagramPacket(packetBuff,packetBuff.length);
 		logger.log(this.getClass().getName()+":receivePacket:Awaiting packet.");
-		socket.receive(packet);
+		multicastSocket.receive(packet);
 		logger.log(this.getClass().getName()+":receivePacket:Packet received.");
 	}
 
 	/**
 	 * Process data in packet
 	 * @see #packet
-	 * @see #inputStream
+	 * @see #packetInputStream
 	 * @see #alertData
+	 * @see #readImalive
+	 * @see #readSax
+	 * @see #readHeteAlert
+	 * @see #readHeteUpdate
+	 * @see #readHeteGroundAnalysis
+	 * @see #readIntegralPointing
+	 * @see #readIntegralWakeup
+	 * @see #readIntegralRefined
+	 * @see #readIntegralOffline
+	 * @see #readSwiftBatAlert
+	 * @see #readSwiftBatGRBPosition
+	 * @see #readSwiftXrtGRBPosition
+	 * @see #readSwiftUvotGRBPosition
 	 */
 	protected void processData() throws Exception
 	{
@@ -271,7 +367,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		buff = packet.getData();
 		// Create an input stream from the buffer.
 		bin = new ByteArrayInputStream(buff, 0,buff.length);
-		inputStream = new DataInputStream(bin);
+		packetInputStream = new DataInputStream(bin);
 		alertData = new GCNDatagramAlertData();
 		// Set notice date to now. Note this should really be set to pkt_sod,
 		// but this won't work if the notice is sent around midnight.
@@ -377,6 +473,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see #alertData
 	 * @see #allowedAlerts
 	 * @see #maxErrorBox
+	 * @see #enableSocketAlerts
 	 */
 	protected boolean alertFilter()
 	{
@@ -384,6 +481,12 @@ public class GCNDatagramScriptStarter implements Runnable
 		{
 			logger.log("alertFilter stopped propogation of alert on type: allowed alerts "+allowedAlerts+
 				   " not compatible with alertData alert type "+alertData.getAlertType()+".");
+			return false;
+		}
+		if(enableSocketAlerts == false)
+		{
+			logger.log("alertFilter stopped propogation of alert. "+
+				   "Socket alerts have been disabled from the control socket.");
 			return false;
 		}
 		// Note maxErrorBox is a radius in arc-seconds, 
@@ -448,8 +551,9 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Method to call the script. The script is started with parameters as follows:
 	 * <pre>
-	 * -ra  <ra> -dec <dec> -epoch <epoch> -error_box <error_box> -trigger_number <tnum> -sequence_number <snum> -grb_date <date> -notice_date <date>
+	 * -ra  &lt;ra&gt; -dec &lt;dec&gt; -epoch &lt;epoch&gt; -error_box &lt;error_box&gt; -trigger_number &lt;tnum&gt; -sequence_number &lt;snum&gt; -grb_date &lt;date&gt; -notice_date &lt;date&gt;
 	 * </pre>
+	 * A <b>-test</b> argument is added if specified in the alertData.
 	 * Note the &lt;error_box&gt; is the radius in arc-minutes.
 	 * A script thread is started to monitor the spawned script process.
 	 * @see #script
@@ -478,6 +582,8 @@ public class GCNDatagramScriptStarter implements Runnable
 			execString.append(" -grb_date "+dateFormat.format(alertData.getGRBDate()));
 		if(alertData.getNoticeDate() != null)
 			execString.append(" -notice_date "+dateFormat.format(alertData.getNoticeDate()));
+		if(alertData.getTest())
+			execString.append(" -test");
 		logger.log("startScript: Executing:"+execString.toString());
 		process = rt.exec(execString.toString());
 		scriptThread = new ScriptThread(process);
@@ -485,52 +591,75 @@ public class GCNDatagramScriptStarter implements Runnable
 		thread.start();
 	}
 
+	/**
+	 * Read a type integer from the packet input stream, and return it.
+	 * @see #packetInputStream
+	 */
 	protected int readType() throws IOException
 	{
-		int type = inputStream.readInt();	
+		int type = packetInputStream.readInt();	
 		return type;
 	}
     
+	/**
+	 * Read a termintor word from the packet input stream.
+	 * @see #packetInputStream
+	 * @see #logger
+	 */
 	protected void readTerm() throws IOException
 	{
-		inputStream.readByte();
-		inputStream.readByte();
-		inputStream.readByte();
-		inputStream.readByte();
+		packetInputStream.readByte();
+		packetInputStream.readByte();
+		packetInputStream.readByte();
+		packetInputStream.readByte();
 		logger.log("-----Terminator");
 	}
     
-    /** Read the header. */
+	/** 
+	 * Read the header and hop count word, and log it. 
+	 * @see #packetInputStream
+	 * @see #logger
+	 */
 	protected void readHdr() throws IOException
 	{
-		int seq  = inputStream.readInt(); // SEQ_NO.
-		int hop  = inputStream.readInt(); // HOP_CNT. 
+		int seq  = packetInputStream.readInt(); // SEQ_NO.
+		int hop  = packetInputStream.readInt(); // HOP_CNT. 
 		logger.log("Header: Packet Seq.No: "+seq+" Hop Count: "+hop);
 	}
     
 	/** 
 	 * Read the SOD for date.
+	 * @see #packetInputStream
+	 * @see #logger
 	 */
 	protected void readSod() throws IOException
 	{
-		int sod = inputStream.readInt();
+		int sod = packetInputStream.readInt();
 		logger.log("SOD: "+sod);
 	}
     
 	/** 
 	 * Read stuffing bytes. 
+	 * @see #packetInputStream
+	 * @see #logger
 	 */
 	protected void readStuff(int from, int to) throws IOException
 	{
 		for (int i = from; i <= to; i++)
 		{
-			inputStream.readInt();
+			packetInputStream.readInt();
 		}
 		logger.log("Skipped: "+from+" to "+to);
 	}
 
 	/**
 	 * IAMALIVE packets.
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
 	 */
 	public void readImalive()
 	{
@@ -546,7 +675,16 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.error("IM_ALIVE: Error reading: ",e);
 		}
 	}
-    
+
+	/**
+	 * Read sax packets.
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 */
 	public void readSax()
 	{
 		try
@@ -554,21 +692,21 @@ public class GCNDatagramScriptStarter implements Runnable
 			readHdr(); // 0, 1, 2
 			readSod();     // 3
 			readStuff(4,4);   // 4 - spare
-			int burst_tjd = inputStream.readInt(); // 5 - burst_tjd
-			int burst_sod = inputStream.readInt(); // 6 - burst_sod
+			int burst_tjd = packetInputStream.readInt(); // 5 - burst_tjd
+			int burst_sod = packetInputStream.readInt(); // 6 - burst_sod
 			logger.log("Burst: TJD:"+burst_tjd+" SOD: "+burst_sod);
-			int bra =  inputStream.readInt(); // 7 - burst RA [ x10000 degrees]
-			int bdec = inputStream.readInt(); // 8 - burst Dec [x10000 degrees].
-			int bint = inputStream.readInt(); // 9 - burst intens mCrab.
+			int bra =  packetInputStream.readInt(); // 7 - burst RA [ x10000 degrees]
+			int bdec = packetInputStream.readInt(); // 8 - burst Dec [x10000 degrees].
+			int bint = packetInputStream.readInt(); // 9 - burst intens mCrab.
 			logger.log("RA: "+bra+" Dec: "+bdec+" Intensity:"+bint+" [mcrab]");
 			readStuff(10, 10);   // 10 - spare
-			int berr  = inputStream.readInt(); // 11 - burst error
-			int bconf = inputStream.readInt(); // 12 - burst conf [% x 100].
+			int berr  = packetInputStream.readInt(); // 11 - burst error
+			int bconf = packetInputStream.readInt(); // 12 - burst conf [% x 100].
 			logger.log("Burst Error: "+berr+" Confidence: "+bconf);
 			readStuff(13, 17); // 13,, 17 - spare.		
-			int trig_id = inputStream.readInt(); // 18 - trigger flags.
+			int trig_id = packetInputStream.readInt(); // 18 - trigger flags.
 			logger.log("Trigger Flags: "+trig_id);
-			inputStream.readInt(); // 19 - stuff.
+			packetInputStream.readInt(); // 19 - stuff.
 			readStuff(20, 38); // 20,, 38 - spare.
 			readTerm(); // 39 - TERM.	   
 		}
@@ -578,28 +716,37 @@ public class GCNDatagramScriptStarter implements Runnable
 			alertData.setAlertType(0);
 		}
 	}
-    
+
+	/**
+	 * Read HETE alert packets.
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 */
 	public void readHeteAlert()
 	{
 		try
 		{
 			readHdr(); // 0, 1, 2
 			readSod();     // 3
-			int tsn = inputStream.readInt();   // 4 - trig_seq_num
-			int burst_tjd = inputStream.readInt(); // 5 - burst_tjd
-			int burst_sod = inputStream.readInt(); // 6 - burst_sod
+			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
+			int burst_tjd = packetInputStream.readInt(); // 5 - burst_tjd
+			int burst_sod = packetInputStream.readInt(); // 6 - burst_sod
 			logger.log("Trig. Seq. No: "+tsn+" Burst: TJD:"+burst_tjd+" SOD: "+burst_sod);
 			readStuff(7, 8); // 7, 8 - spare 
 			//int trig_flags = GAMMA_TRIG | WXM_TRIG | PROB_GRB;
-			int trig_flags = inputStream.readInt(); // 9 - trig_flags
+			int trig_flags = packetInputStream.readInt(); // 9 - trig_flags
 			logger.log("Trigger Flags: "+trig_flags);
-			int gamma = inputStream.readInt();   // 10 - gamma_cnts
-			int wxm = inputStream.readInt(); // 11 - wxm_cnts
-			int sxc = inputStream.readInt();  // 12 - sxc_cnts
+			int gamma = packetInputStream.readInt();   // 10 - gamma_cnts
+			int wxm = packetInputStream.readInt(); // 11 - wxm_cnts
+			int sxc = packetInputStream.readInt();  // 12 - sxc_cnts
 			logger.log("Counts:: Gamma: "+gamma+" Wxm: "+wxm+" Sxc: "+sxc);
-			int gammatime = inputStream.readInt(); // 13 - gamma_time
-			int wxmtime = inputStream.readInt(); // 14 - wxm_time
-			int scpoint = inputStream.readInt(); // 15 - sc_point
+			int gammatime = packetInputStream.readInt(); // 13 - gamma_time
+			int wxmtime = packetInputStream.readInt(); // 14 - wxm_time
+			int scpoint = packetInputStream.readInt(); // 15 - sc_point
 			logger.log("Time:: Gamma: "+gammatime+" Wxm: "+wxmtime);
 			logger.log("SC Point:"+scpoint);
 			readStuff(16, 38); // 16,, 38 spare
@@ -615,6 +762,14 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	/**
 	 * HETE_S/C_UPDATE (TYPE=41).
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
 	 */
 	public void readHeteUpdate()
 	{ 
@@ -630,20 +785,20 @@ public class GCNDatagramScriptStarter implements Runnable
 		{
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod();     // 3 - pkt_sod
-			int tsn = inputStream.readInt();   // 4 - trig_seq_num
+			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			trigNum = (tsn & 0x0000FFFF);
 			mesgNum = (tsn & 0xFFFF0000) >> 16;
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
-			int burstTjd = inputStream.readInt(); // 5 - burst_tjd
-			int burstSod = inputStream.readInt(); // 6 - burst_sod
+			int burstTjd = packetInputStream.readInt(); // 5 - burst_tjd
+			int burstSod = packetInputStream.readInt(); // 6 - burst_sod
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			logger.log("Burst: TJD:"+burstTjd+" SOD: "+burstSod);
 			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
 			logger.log("Burst Date: "+burstDate);
 			alertData.setGRBDate(burstDate);
-			bra = inputStream.readInt(); // Burst RA (x10e4 degs). // 7 - burst_ra
-			bdec = inputStream.readInt(); // Burst Dec (x10e4 degs). // 8 = burst_dec
+			bra = packetInputStream.readInt(); // Burst RA (x10e4 degs). // 7 - burst_ra
+			bdec = packetInputStream.readInt(); // Burst Dec (x10e4 degs). // 8 = burst_dec
 			// if neither WXM or SXC have positions, than bra/bdec is -999.9999 (x10000)
 			if((bra < -999000)||(bdec < -999000))
 			{
@@ -660,59 +815,59 @@ public class GCNDatagramScriptStarter implements Runnable
 				logger.log("Burst Dec: "+dec);
 				logger.log("Epoch: "+burstDate);
 			}
-			int trig_flags = inputStream.readInt(); // 9 - trig_flags
+			int trig_flags = packetInputStream.readInt(); // 9 - trig_flags
 			logger.log("Trigger Flags: 0x"+Integer.toHexString(trig_flags));
-			int gamma = inputStream.readInt();   // 10 - gamma_cnts
-			int wxm   = inputStream.readInt(); // 11 - wxm_cnts
-			int sxc   = inputStream.readInt();  // 12 - sxc_cnts
+			int gamma = packetInputStream.readInt();   // 10 - gamma_cnts
+			int wxm   = packetInputStream.readInt(); // 11 - wxm_cnts
+			int sxc   = packetInputStream.readInt();  // 12 - sxc_cnts
 			logger.log("Counts:: Gamma: "+gamma+" Wxm: "+wxm+" Sxc: "+sxc);
-			int gammatime = inputStream.readInt(); // 13 - gamma_time
-			int wxmtime = inputStream.readInt(); // 14 - wxm_time
-			int scpoint = inputStream.readInt(); // 15 - sc_point
+			int gammatime = packetInputStream.readInt(); // 13 - gamma_time
+			int wxmtime = packetInputStream.readInt(); // 14 - wxm_time
+			int scpoint = packetInputStream.readInt(); // 15 - sc_point
 			int sczra   = (scpoint & 0xFFFF0000) >> 16;
 			int sczdec  = (scpoint & 0x0000FFFF);
 			logger.log("Time:: Gamma: "+gammatime+" Wxm: "+wxmtime);
 			logger.log("SC Pointing: RA(deg): "+(((double)sczra)/10000.0)+
 					   " Dec(deg): "+(((double)sczdec)/10000.0));
-			int wxra1 = inputStream.readInt();  // 16 - WXM ra1 (x10e4 degs).
-			int wxdec1 = inputStream.readInt(); // 17 WXM dec1 (x10e4 degs).
-			int wxra2 = inputStream.readInt();  // 18 - WXM ra2 (x10e4 degs).
-			int wxdec2 = inputStream.readInt(); // 19 WXM dec2 (x10e4 degs).
-			int wxra3 = inputStream.readInt();  // 20 - WXM ra3 (x10e4 degs).
-			int wxdec3 = inputStream.readInt(); // 21 WXM dec3 (x10e4 degs).
-			int wxra4 = inputStream.readInt();  // 22 - WXM ra4 (x10e4 degs).
-			int wxdec4 = inputStream.readInt(); // 23 WXM dec4 (x10e4 degs).
-			int wxErrors = inputStream.readInt(); // 24 WXM Errors (bit-field) - Sys & Stat.
+			int wxra1 = packetInputStream.readInt();  // 16 - WXM ra1 (x10e4 degs).
+			int wxdec1 = packetInputStream.readInt(); // 17 WXM dec1 (x10e4 degs).
+			int wxra2 = packetInputStream.readInt();  // 18 - WXM ra2 (x10e4 degs).
+			int wxdec2 = packetInputStream.readInt(); // 19 WXM dec2 (x10e4 degs).
+			int wxra3 = packetInputStream.readInt();  // 20 - WXM ra3 (x10e4 degs).
+			int wxdec3 = packetInputStream.readInt(); // 21 WXM dec3 (x10e4 degs).
+			int wxra4 = packetInputStream.readInt();  // 22 - WXM ra4 (x10e4 degs).
+			int wxdec4 = packetInputStream.readInt(); // 23 WXM dec4 (x10e4 degs).
+			int wxErrors = packetInputStream.readInt(); // 24 WXM Errors (bit-field) - Sys & Stat.
 			// wxErrors contains radius in arcsec, of statistical error (top 16 bits) 
 			// and systematic (bottom 16 bits.
 			logger.log("WXM error box (radius,arcsec) : statistical : "+((wxErrors&0xFFFF0000)>>16)+
 				   " : systematic : "+(wxErrors&0x0000FFFF)+".");
-			int wxDimSig = inputStream.readInt(); // 25 WXM Packed numbers.
+			int wxDimSig = packetInputStream.readInt(); // 25 WXM Packed numbers.
 			// wxDimSig contains the maximum dimension of the WXM error box [units arcsec] in top 16 bits
 			int wxErrorBoxArcsec = (wxDimSig&0xFFFF0000)>>16;
 			logger.log("WXM error box (diameter,arcsec) : "+wxErrorBoxArcsec+".");
-			int sxra1 = inputStream.readInt();  // 26 - SC ra1 (x10e4 degs).
-			int sxdec1 = inputStream.readInt(); // 27 SC dec1 (x10e4 degs).
-			int sxra2 = inputStream.readInt();  // 28 - SC ra2 (x10e4 degs).
-			int sxdec2 = inputStream.readInt(); // 29 SC dec2 (x10e4 degs).
-			int sxra3 = inputStream.readInt();  // 30 - SC ra3 (x10e4 degs).
-			int sxdec3 = inputStream.readInt(); // 31 SC dec3 (x10e4 degs).
-			int sxra4 = inputStream.readInt();  // 32 - SC ra4 (x10e4 degs).
-			int sxdec4 = inputStream.readInt(); // 33 SC dec4 (x10e4 degs).
-			int sxErrors = inputStream.readInt(); // 34 SC Errors (bit-field) - Sys & Stat.
+			int sxra1 = packetInputStream.readInt();  // 26 - SC ra1 (x10e4 degs).
+			int sxdec1 = packetInputStream.readInt(); // 27 SC dec1 (x10e4 degs).
+			int sxra2 = packetInputStream.readInt();  // 28 - SC ra2 (x10e4 degs).
+			int sxdec2 = packetInputStream.readInt(); // 29 SC dec2 (x10e4 degs).
+			int sxra3 = packetInputStream.readInt();  // 30 - SC ra3 (x10e4 degs).
+			int sxdec3 = packetInputStream.readInt(); // 31 SC dec3 (x10e4 degs).
+			int sxra4 = packetInputStream.readInt();  // 32 - SC ra4 (x10e4 degs).
+			int sxdec4 = packetInputStream.readInt(); // 33 SC dec4 (x10e4 degs).
+			int sxErrors = packetInputStream.readInt(); // 34 SC Errors (bit-field) - Sys & Stat.
 			// sxErrors contains radius in arcsec, of statistical error (top 16 bits) 
 			// and systematic (bottom 16 bits).
 			logger.log("SXC error box (radius,arcsec) : statistical : "+((sxErrors&0xFFFF0000)>>16)+
 				   " : systematic : "+(sxErrors&0x0000FFFF)+".");
-			int sxDimSig = inputStream.readInt(); // 35 SC Packed numbers.
+			int sxDimSig = packetInputStream.readInt(); // 35 SC Packed numbers.
 			// sxDimSig contains the maximum dimension of the SXC error box [units arcsec] in top 16 bits
 			int sxErrorBoxArcsec = (sxDimSig&0xFFFF0000)>>16;
 			logger.log("SXC error box (diameter,arcsec) : "+sxErrorBoxArcsec+".");
 			alertData.setErrorBoxSize(((double)(Math.max(wxErrorBoxArcsec,sxErrorBoxArcsec)))/
 						  (2.0*60.0));// radius, in arc-min
-			int posFlags = inputStream.readInt(); // 36 - pos_flags
+			int posFlags = packetInputStream.readInt(); // 36 - pos_flags
 			logger.log("Pos Flags: 0x"+Integer.toHexString(posFlags));
-			int validity = inputStream.readInt(); // 37 - validity flags.
+			int validity = packetInputStream.readInt(); // 37 - validity flags.
 			logger.log("Validity Flag: 0x"+Integer.toHexString(validity));
 			// There are two flags BURST_VALID (0x1) and BURST_INVALID (0x2)
 			// Neither, one or both(?) can be set.
@@ -742,6 +897,14 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	/**
 	 * HETE_GNDANA (TYPE=43).
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
 	 */
 	public void readHeteGroundAnalysis()
 	{ 
@@ -757,20 +920,20 @@ public class GCNDatagramScriptStarter implements Runnable
 		{
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod();     // 3 - pkt_sod
-			int tsn = inputStream.readInt();   // 4 - trig_seq_num
+			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			trigNum = (tsn & 0x0000FFFF);
 			mesgNum = (tsn & 0xFFFF0000) >> 16;
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
-			int burstTjd = inputStream.readInt(); // 5 - burst_tjd
-			int burstSod = inputStream.readInt(); // 6 - burst_sod
+			int burstTjd = packetInputStream.readInt(); // 5 - burst_tjd
+			int burstSod = packetInputStream.readInt(); // 6 - burst_sod
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			logger.log("Burst: TJD:"+burstTjd+" SOD: "+burstSod);
 			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
 			logger.log("Burst Date: "+burstDate);
 			alertData.setGRBDate(burstDate);
-			bra = inputStream.readInt(); // Burst RA (x10e4 degs). // 7 - burst_ra
-			bdec = inputStream.readInt(); // Burst Dec (x10e4 degs). // 8 = burst_dec
+			bra = packetInputStream.readInt(); // Burst RA (x10e4 degs). // 7 - burst_ra
+			bdec = packetInputStream.readInt(); // Burst Dec (x10e4 degs). // 8 = burst_dec
 			// if neither WXM or SXC have positions, than bra/bdec is -999.9999 (x10000)
 			if((bra < -999000)||(bdec < -999000))
 			{
@@ -787,59 +950,59 @@ public class GCNDatagramScriptStarter implements Runnable
 				logger.log("Burst Dec: "+dec);
 				logger.log("Epoch: "+burstDate);
 			}
-			int trig_flags = inputStream.readInt(); // 9 - trig_flags
+			int trig_flags = packetInputStream.readInt(); // 9 - trig_flags
 			logger.log("Trigger Flags: 0x"+Integer.toHexString(trig_flags));
-			int gamma = inputStream.readInt();   // 10 - gamma_cnts
-			int wxm   = inputStream.readInt(); // 11 - wxm_cnts
-			int sxc   = inputStream.readInt();  // 12 - sxc_cnts
+			int gamma = packetInputStream.readInt();   // 10 - gamma_cnts
+			int wxm   = packetInputStream.readInt(); // 11 - wxm_cnts
+			int sxc   = packetInputStream.readInt();  // 12 - sxc_cnts
 			logger.log("Counts:: Gamma: "+gamma+" Wxm: "+wxm+" Sxc: "+sxc);
-			int gammatime = inputStream.readInt(); // 13 - gamma_time
-			int wxmtime = inputStream.readInt(); // 14 - wxm_time
-			int scpoint = inputStream.readInt(); // 15 - sc_point
+			int gammatime = packetInputStream.readInt(); // 13 - gamma_time
+			int wxmtime = packetInputStream.readInt(); // 14 - wxm_time
+			int scpoint = packetInputStream.readInt(); // 15 - sc_point
 			int sczra   = (scpoint & 0xFFFF0000) >> 16;
 			int sczdec  = (scpoint & 0x0000FFFF);
 			logger.log("Time:: Gamma: "+gammatime+" Wxm: "+wxmtime);
 			logger.log("SC Pointing: RA(deg): "+(((double)sczra)/10000.0)+
 					   " Dec(deg): "+(((double)sczdec)/10000.0));
-			int wxra1 = inputStream.readInt();  // 16 - WXM ra1 (x10e4 degs).
-			int wxdec1 = inputStream.readInt(); // 17 WXM dec1 (x10e4 degs).
-			int wxra2 = inputStream.readInt();  // 18 - WXM ra2 (x10e4 degs).
-			int wxdec2 = inputStream.readInt(); // 19 WXM dec2 (x10e4 degs).
-			int wxra3 = inputStream.readInt();  // 20 - WXM ra3 (x10e4 degs).
-			int wxdec3 = inputStream.readInt(); // 21 WXM dec3 (x10e4 degs).
-			int wxra4 = inputStream.readInt();  // 22 - WXM ra4 (x10e4 degs).
-			int wxdec4 = inputStream.readInt(); // 23 WXM dec4 (x10e4 degs).
-			int wxErrors = inputStream.readInt(); // 24 WXM Errors (bit-field) - Sys & Stat.
+			int wxra1 = packetInputStream.readInt();  // 16 - WXM ra1 (x10e4 degs).
+			int wxdec1 = packetInputStream.readInt(); // 17 WXM dec1 (x10e4 degs).
+			int wxra2 = packetInputStream.readInt();  // 18 - WXM ra2 (x10e4 degs).
+			int wxdec2 = packetInputStream.readInt(); // 19 WXM dec2 (x10e4 degs).
+			int wxra3 = packetInputStream.readInt();  // 20 - WXM ra3 (x10e4 degs).
+			int wxdec3 = packetInputStream.readInt(); // 21 WXM dec3 (x10e4 degs).
+			int wxra4 = packetInputStream.readInt();  // 22 - WXM ra4 (x10e4 degs).
+			int wxdec4 = packetInputStream.readInt(); // 23 WXM dec4 (x10e4 degs).
+			int wxErrors = packetInputStream.readInt(); // 24 WXM Errors (bit-field) - Sys & Stat.
 			// wxErrors contains radius in arcsec, of statistical error (top 16 bits) 
 			// and systematic (bottom 16 bits.
 			logger.log("WXM error box (radius,arcsec) : statistical : "+((wxErrors&0xFFFF0000)>>16)+
 				   " : systematic : "+(wxErrors&0x0000FFFF)+".");
-			int wxDimSig = inputStream.readInt(); // 25 WXM Packed numbers.
+			int wxDimSig = packetInputStream.readInt(); // 25 WXM Packed numbers.
 			// wxDimSig contains the maximum dimension of the WXM error box [units arcsec] in top 16 bits
 			int wxErrorBoxArcsec = (wxDimSig&0xFFFF0000)>>16;
 			logger.log("WXM error box (diameter,arcsec) : "+wxErrorBoxArcsec+".");
-			int sxra1 = inputStream.readInt();  // 26 - SC ra1 (x10e4 degs).
-			int sxdec1 = inputStream.readInt(); // 27 SC dec1 (x10e4 degs).
-			int sxra2 = inputStream.readInt();  // 28 - SC ra2 (x10e4 degs).
-			int sxdec2 = inputStream.readInt(); // 29 SC dec2 (x10e4 degs).
-			int sxra3 = inputStream.readInt();  // 30 - SC ra3 (x10e4 degs).
-			int sxdec3 = inputStream.readInt(); // 31 SC dec3 (x10e4 degs).
-			int sxra4 = inputStream.readInt();  // 32 - SC ra4 (x10e4 degs).
-			int sxdec4 = inputStream.readInt(); // 33 SC dec4 (x10e4 degs).
-			int sxErrors = inputStream.readInt(); // 34 SC Errors (bit-field) - Sys & Stat.
+			int sxra1 = packetInputStream.readInt();  // 26 - SC ra1 (x10e4 degs).
+			int sxdec1 = packetInputStream.readInt(); // 27 SC dec1 (x10e4 degs).
+			int sxra2 = packetInputStream.readInt();  // 28 - SC ra2 (x10e4 degs).
+			int sxdec2 = packetInputStream.readInt(); // 29 SC dec2 (x10e4 degs).
+			int sxra3 = packetInputStream.readInt();  // 30 - SC ra3 (x10e4 degs).
+			int sxdec3 = packetInputStream.readInt(); // 31 SC dec3 (x10e4 degs).
+			int sxra4 = packetInputStream.readInt();  // 32 - SC ra4 (x10e4 degs).
+			int sxdec4 = packetInputStream.readInt(); // 33 SC dec4 (x10e4 degs).
+			int sxErrors = packetInputStream.readInt(); // 34 SC Errors (bit-field) - Sys & Stat.
 			// sxErrors contains radius in arcsec, of statistical error (top 16 bits) 
 			// and systematic (bottom 16 bits).
 			logger.log("SXC error box (radius,arcsec) : statistical : "+((sxErrors&0xFFFF0000)>>16)+
 				   " : systematic : "+(sxErrors&0x0000FFFF)+".");
-			int sxDimSig = inputStream.readInt(); // 35 SC Packed numbers.
+			int sxDimSig = packetInputStream.readInt(); // 35 SC Packed numbers.
 			// sxDimSig contains the maximum dimension of the SXC error box [units arcsec] in top 16 bits
 			int sxErrorBoxArcsec = (sxDimSig&0xFFFF0000)>>16;
 			logger.log("SXC error box (diameter,arcsec) : "+sxErrorBoxArcsec+".");
 			alertData.setErrorBoxSize(((double)(Math.max(wxErrorBoxArcsec,sxErrorBoxArcsec)))/
 						  (2.0*60.0));// radius, in arc-min
-			int posFlags = inputStream.readInt(); // 36 - pos_flags
+			int posFlags = packetInputStream.readInt(); // 36 - pos_flags
 			logger.log("Pos Flags: 0x"+Integer.toHexString(posFlags));
-			int validity = inputStream.readInt(); // 37 - validity flags.
+			int validity = packetInputStream.readInt(); // 37 - validity flags.
 			logger.log("Validity Flag: 0x"+Integer.toHexString(validity));
 			// There are two flags BURST_VALID (0x1) and BURST_INVALID (0x2)
 			// Neither, one or both(?) can be set.
@@ -867,6 +1030,16 @@ public class GCNDatagramScriptStarter implements Runnable
 		}
 	}
 
+	/**
+	 * Read integral pointing.
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 */
 	public void readIntegralPointing()
 	{
 		RA ra = null;
@@ -876,28 +1049,28 @@ public class GCNDatagramScriptStarter implements Runnable
 		{
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod(); // 3
-			int tsn = inputStream.readInt();   // 4 - trig_seq_num
+			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x0000FFFF);
 			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
-			int slewTjd = inputStream.readInt(); // 5 Slew TJD.
-			int slewSod = inputStream.readInt(); // 6 Slew SOD.
+			int slewTjd = packetInputStream.readInt(); // 5 Slew TJD.
+			int slewSod = packetInputStream.readInt(); // 6 Slew SOD.
 			logger.log("Slew at: "+slewTjd+" TJD Time: "+slewSod+" Sod.");
 			readStuff(7, 11);
-			int flags   =  inputStream.readInt(); // 12 Test Flags.
+			int flags   =  packetInputStream.readInt(); // 12 Test Flags.
 			logger.log("Test Flags: ["+Integer.toHexString(flags).toUpperCase()+"]");
-			inputStream.readInt(); // 13 spare.
-			int scRA    = inputStream.readInt(); // 14 Next RA *10000.
-			int scDec   = inputStream.readInt(); // 15 Next Dec *10000.
+			packetInputStream.readInt(); // 13 spare.
+			int scRA    = packetInputStream.readInt(); // 14 Next RA *10000.
+			int scDec   = packetInputStream.readInt(); // 15 Next Dec *10000.
 			ra = new RA();
 			dec = new Dec();
 			ra.fromRadians(Math.toRadians((double)scRA)/10000.0);
 			dec.fromRadians(Math.toRadians((double)scDec)/10000.0);
 			logger.log("SC Slew to RA: "+ra+" Dec:"+dec);
 			readStuff(16,18);
-			int scStat  = inputStream.readInt(); // 19 Status and attitude flags.
+			int scStat  = packetInputStream.readInt(); // 19 Status and attitude flags.
 			logger.log("Status Flags;: ["+Integer.toHexString(scStat).toUpperCase()+"]");
 			readStuff(20, 38);
 			readTerm(); // 39 - TERM.	 
@@ -910,6 +1083,14 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	/**
 	 * Integral Wakeup (TYPE 53).
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
 	 */
 	public void readIntegralWakeup()
 	{
@@ -921,21 +1102,21 @@ public class GCNDatagramScriptStarter implements Runnable
 		{
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod(); // 3
-			int tsn = inputStream.readInt();   // 4 - trig_seq_num
+			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x0000FFFF);
 			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
 			//TJD=12640 is 01 Jan 2003
-			int burstTjd = inputStream.readInt(); // 5 Burst TJD.
-			int burstSod = inputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
+			int burstTjd = packetInputStream.readInt(); // 5 Burst TJD.
+			int burstSod = packetInputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
 			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
 			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
 			logger.log("Burst Date: "+burstDate);
 			alertData.setGRBDate(burstDate);
-			int bra    = inputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
-			int bdec   = inputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			int bra    = packetInputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = packetInputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
 			ra = new RA();
 			dec = new Dec();
 			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
@@ -948,14 +1129,14 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("Burst RA: "+ra);
 			logger.log("Burst Dec: "+dec);
 			logger.log("Epoch: "+alertData.getEpoch());
-			int detFlags   =  inputStream.readInt(); // 9 detector Test Flags.
+			int detFlags   =  packetInputStream.readInt(); // 9 detector Test Flags.
 			logger.log("Detector Flags: ["+Integer.toHexString(detFlags).toUpperCase()+"]");
-			int intensitySigma   =  inputStream.readInt(); // 10 burst intensity sigma * 100
+			int intensitySigma   =  packetInputStream.readInt(); // 10 burst intensity sigma * 100
 			logger.log("Intensity Sigma: "+(((double)intensitySigma)/100.0)+".");
-			int burstError   =  inputStream.readInt(); // 11 burst error (arcsec)
+			int burstError   =  packetInputStream.readInt(); // 11 burst error (arcsec)
 			// burstError is radius of circle (arcsecs) that contains TBD% c.l.  of bursts
 			alertData.setErrorBoxSize((((double)burstError)/60.0));// in arc-min
-			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
+			int testMpos = packetInputStream.readInt(); // 12 Test/Multi-Position flags.
 			logger.log("Status Flags: [0x"+Integer.toHexString(testMpos).toUpperCase()+"]");
 			logger.log("testMpos 0x"+Integer.toHexString(testMpos).toUpperCase()+
 				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+(testMpos & (1<<31)));
@@ -977,6 +1158,14 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	/**
 	 * Integral Refined (TYPE 54).
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
 	 */
 	public void readIntegralRefined()
 	{
@@ -988,21 +1177,21 @@ public class GCNDatagramScriptStarter implements Runnable
 		{
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod(); // 3
-			int tsn = inputStream.readInt();   // 4 - trig_seq_num
+			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x0000FFFF);
 			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
 			//TJD=12640 is 01 Jan 2003
-			int burstTjd = inputStream.readInt(); // 5 Burst TJD.
-			int burstSod = inputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
+			int burstTjd = packetInputStream.readInt(); // 5 Burst TJD.
+			int burstSod = packetInputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
 			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
 			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
 			logger.log("Burst Date: "+burstDate);
 			alertData.setGRBDate(burstDate);
-			int bra    = inputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
-			int bdec   = inputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			int bra    = packetInputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = packetInputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
 			ra = new RA();
 			dec = new Dec();
 			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
@@ -1015,15 +1204,15 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("Burst RA: "+ra);
 			logger.log("Burst Dec: "+dec);
 			logger.log("Epoch: "+alertData.getEpoch());
-			int detFlags   =  inputStream.readInt(); // 9 detector Test Flags.
+			int detFlags   =  packetInputStream.readInt(); // 9 detector Test Flags.
 			logger.log("Detector Flags: ["+Integer.toHexString(detFlags).toUpperCase()+"]");
-			int intensitySigma   =  inputStream.readInt(); // 10 burst intensity sigma * 100
+			int intensitySigma   =  packetInputStream.readInt(); // 10 burst intensity sigma * 100
 			logger.log("Intensity Sigma: "+(((double)intensitySigma)/100.0)+".");
-			int burstError   =  inputStream.readInt(); // 11 burst error (arcsec)
+			int burstError   =  packetInputStream.readInt(); // 11 burst error (arcsec)
 			// burstError is radius of circle (arcsecs) that contains TBD% c.l.  of bursts
 			logger.log("Burst error: "+((double)burstError)+" arcsec radius.");
 			alertData.setErrorBoxSize((((double)burstError)/60.0));// in arc-min
-			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
+			int testMpos = packetInputStream.readInt(); // 12 Test/Multi-Position flags.
 			logger.log("Status Flags: [0x"+Integer.toHexString(testMpos).toUpperCase()+"]");
 			logger.log("testMpos 0x"+Integer.toHexString(testMpos).toUpperCase()+
 				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+(testMpos & (1<<31)));
@@ -1042,6 +1231,17 @@ public class GCNDatagramScriptStarter implements Runnable
 		}
 	}
 
+	/**
+	 * Integral offline.
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
+	 */
 	public void readIntegralOffline()
 	{
 		RA ra = null;
@@ -1052,21 +1252,21 @@ public class GCNDatagramScriptStarter implements Runnable
 		{
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod(); // 3
-			int tsn = inputStream.readInt();   // 4 - trig_seq_num
+			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x0000FFFF);
 			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
 			//TJD=12640 is 01 Jan 2003
-			int burstTjd = inputStream.readInt(); // 5 Burst TJD.
-			int burstSod = inputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
+			int burstTjd = packetInputStream.readInt(); // 5 Burst TJD.
+			int burstSod = packetInputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
 			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
 			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
 			logger.log("Burst Date: "+burstDate);
 			alertData.setGRBDate(burstDate);
-			int bra    = inputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
-			int bdec   = inputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			int bra    = packetInputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = packetInputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
 			ra = new RA();
 			dec = new Dec();
 			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
@@ -1079,15 +1279,15 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("Burst RA: "+ra);
 			logger.log("Burst Dec: "+dec);
 			logger.log("Epoch: "+alertData.getEpoch());
-			int detFlags   =  inputStream.readInt(); // 9 detector Test Flags.
+			int detFlags   =  packetInputStream.readInt(); // 9 detector Test Flags.
 			logger.log("Detector Flags: ["+Integer.toHexString(detFlags).toUpperCase()+"]");
-			int intensitySigma   =  inputStream.readInt(); // 10 burst intensity sigma * 100
+			int intensitySigma   =  packetInputStream.readInt(); // 10 burst intensity sigma * 100
 			logger.log("Intensity Sigma: "+(((double)intensitySigma)/100.0)+".");
 			// burstError is radius of circle (arcsecs) that contains TBD% c.l.  of bursts
-			int burstError   =  inputStream.readInt(); // 11 burst error (arcsec)
+			int burstError   =  packetInputStream.readInt(); // 11 burst error (arcsec)
 			logger.log("Burst error: "+((double)burstError)+" arcsec radius.");
 			alertData.setErrorBoxSize((((double)burstError)/60.0));// in arc-min
-			int testMpos = inputStream.readInt(); // 12 Test/Multi-Position flags.
+			int testMpos = packetInputStream.readInt(); // 12 Test/Multi-Position flags.
 			logger.log("Status Flags: [0x"+Integer.toHexString(testMpos).toUpperCase()+"]");
 			logger.log("testMpos 0x"+Integer.toHexString(testMpos).toUpperCase()+
 				   " & 0x"+Integer.toHexString((1<<31)).toUpperCase()+" = "+(testMpos & (1<<31)));
@@ -1108,6 +1308,14 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	/**
 	 * Swift BAT alert (Type 60).
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
 	 */
 	public void readSwiftBatAlert()
 	{
@@ -1117,15 +1325,15 @@ public class GCNDatagramScriptStarter implements Runnable
 		{
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod(); // 3
-			int tsn = inputStream.readInt();   // 4 - trig_seq_num
+			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x0000FFFF);
 			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
 			//TJD=12640 is 01 Jan 2003
-			int burstTjd = inputStream.readInt(); // 5 Burst TJD.
-			int burstSod = inputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
+			int burstTjd = packetInputStream.readInt(); // 5 Burst TJD.
+			int burstSod = packetInputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
 			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
 			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
 			logger.log("Burst Date: "+burstDate);
@@ -1142,6 +1350,14 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	/**
 	 * Swift BAT position (Type 61,SWIFT_BAT_GRB_POSITION).
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
 	 */
 	public void readSwiftBatGRBPosition()
 	{
@@ -1153,21 +1369,21 @@ public class GCNDatagramScriptStarter implements Runnable
 		{
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod(); // 3
-			int tsn = inputStream.readInt();   // 4 - trig_seq_num
+			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x00FFFFFF);
 			int mesgNum = (tsn & 0xFF000000) >> 24;  
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
 			//TJD=12640 is 01 Jan 2003
-			int burstTjd = inputStream.readInt(); // 5 Burst TJD.
-			int burstSod = inputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
+			int burstTjd = packetInputStream.readInt(); // 5 Burst TJD.
+			int burstSod = packetInputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
 			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
 			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
 			logger.log("Burst Date: "+burstDate);
 			alertData.setGRBDate(burstDate);
-			int bra    = inputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
-			int bdec   = inputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			int bra    = packetInputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = packetInputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
 			ra = new RA();
 			dec = new Dec();
 			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
@@ -1179,15 +1395,15 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("Burst RA: "+ra);
 			logger.log("Burst Dec: "+dec);
 			logger.log("Epoch: "+2000.0);
-			int burstFlue = inputStream.readInt(); // 9 Burst flue (counts) number of events.
-			int burstIPeak = inputStream.readInt(); // 10 Burst ipeak (counts*ff) counts.
-			int burstError = inputStream.readInt(); // 11 Burst error degrees (0..180) * 10000)
+			int burstFlue = packetInputStream.readInt(); // 9 Burst flue (counts) number of events.
+			int burstIPeak = packetInputStream.readInt(); // 10 Burst ipeak (counts*ff) counts.
+			int burstError = packetInputStream.readInt(); // 11 Burst error degrees (0..180) * 10000)
 			// burst error is radius of circle in degrees*10000 containing TBD% of bursts!
 			// Initially, hardwired to 4 arcmin (0.067 deg) radius.
 			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
 			logger.log("Error Box Radius (arcmin): "+((((double)burstError)*60.0)/10000.0));
 			readStuff(12, 17);// Phi, theta, integ_time, spare x 2
-			int solnStatus = inputStream.readInt(); // 18 Type of source found (bitfield)
+			int solnStatus = packetInputStream.readInt(); // 18 Type of source found (bitfield)
 			logger.log("Soln Status : 0x"+Integer.toHexString(solnStatus));
 			alertData.setStatus(solnStatus); // set alert data status bits to solnStatus
 			if((solnStatus & (1<<0))>0)
@@ -1227,6 +1443,14 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Swift XRT position (Type 67,SWIFT_GRB_XRT_POSITION).
 	 * @see #swiftSolnStatusAcceptMask
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
 	 */
 	public void readSwiftXrtGRBPosition()
 	{
@@ -1238,21 +1462,21 @@ public class GCNDatagramScriptStarter implements Runnable
 		{
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod(); // 3
-			int tsn = inputStream.readInt();   // 4 - trig_seq_num
+			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x00FFFFFF);
 			int mesgNum = (tsn & 0xFF000000) >> 24;  
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
 			//TJD=12640 is 01 Jan 2003
-			int burstTjd = inputStream.readInt(); // 5 Burst TJD.
-			int burstSod = inputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
+			int burstTjd = packetInputStream.readInt(); // 5 Burst TJD.
+			int burstSod = packetInputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
 			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
 			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
 			logger.log("Burst Date: "+burstDate);
 			alertData.setGRBDate(burstDate);
-			int bra    = inputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
-			int bdec   = inputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			int bra    = packetInputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = packetInputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
 			ra = new RA();
 			dec = new Dec();
 			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
@@ -1264,9 +1488,9 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("Burst RA: "+ra);
 			logger.log("Burst Dec: "+dec);
 			logger.log("Epoch: "+2000.0);
-			int burstFlux = inputStream.readInt(); // 9 Burst flux (counts) number of events.
+			int burstFlux = packetInputStream.readInt(); // 9 Burst flux (counts) number of events.
 			readStuff(10, 10); // 10 spare.
-			int burstError = inputStream.readInt(); // 11 Burst error degrees (0..180) * 10000.
+			int burstError = packetInputStream.readInt(); // 11 Burst error degrees (0..180) * 10000.
 			// burst error is radius of circle in degrees*10000 containing 90% of bursts.
 			// Initially, hardwired to 9".
 			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
@@ -1290,6 +1514,14 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Swift XRT position (Type 81,SWIFT_UVOT_POSITION).
 	 * @see #swiftSolnStatusAcceptMask
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
 	 */
 	public void readSwiftUvotGRBPosition()
 	{
@@ -1301,21 +1533,21 @@ public class GCNDatagramScriptStarter implements Runnable
 		{
 			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
 			readSod(); // 3
-			int tsn = inputStream.readInt();   // 4 - trig_obs_num
+			int tsn = packetInputStream.readInt();   // 4 - trig_obs_num
 			int trigNum = (tsn & 0x0000FFFF);
 			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
 			//TJD=12640 is 01 Jan 2003
-			int burstTjd = inputStream.readInt(); // 5 Burst TJD.
-			int burstSod = inputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
+			int burstTjd = packetInputStream.readInt(); // 5 Burst TJD.
+			int burstSod = packetInputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
 			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
 			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
 			logger.log("Burst Date: "+burstDate);
 			alertData.setGRBDate(burstDate);
-			int bra    = inputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
-			int bdec   = inputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			int bra    = packetInputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = packetInputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
 			ra = new RA();
 			dec = new Dec();
 			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
@@ -1327,9 +1559,9 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("Burst RA: "+ra);
 			logger.log("Burst Dec: "+dec);
 			logger.log("Epoch: "+2000.0);
-			int burstMag = inputStream.readInt(); // 9 Uvot mag * 100
+			int burstMag = packetInputStream.readInt(); // 9 Uvot mag * 100
 			readStuff(10, 10); // 10 filter integer.
-			int burstError = inputStream.readInt(); // 11 Burst error in centi-degrees (0..180.0)*10000.
+			int burstError = packetInputStream.readInt(); // 11 Burst error in centi-degrees (0..180.0)*10000.
 			// burst error is radius of circle in degrees*10000 containing 90% of bursts.
 			// Initially, hardwired to 9".
 			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
@@ -1383,9 +1615,437 @@ public class GCNDatagramScriptStarter implements Runnable
 	}
 
 	/**
+	 * Method to start a control server thread.
+	 * @see #ControlServerThread
+	 * @see #controlServerThread
+	 * @see #controlServerPort
+	 */
+	protected void startControlServerThread()
+	{
+		Thread t = null;
+
+		controlServerThread = new ControlServerThread();
+		controlServerThread.setPort(controlServerPort);
+		t = new Thread(controlServerThread);
+		t.start();
+	}
+
+	/**
+	 * Method to perform a command send over the control socket.
+	 * The following commands are supported:
+	 * <pre>
+	 * disable [all|socket|manual|status]
+	 * enable [all|socket|manual|status]
+	 * gamma_ray_burst_alert -ra &lt;ra&gt; -dec &lt;dec&gt; -epoch &lt;epoch&gt; -error_box &lt;error_box&gt; -trigger_number &lt;n&gt; -sequence_number &lt;n&gt; -grb_date &lt;date&gt; -notice_date &lt;date&gt; -HETE -SWIFT -INTEGRAL -test
+	 * help
+	 * quit
+	 * test
+	 * </pre>
+	 * Dates specified in the form: yyyy-MM-dd'T'HH:mm:ss.
+	 * -ra specified as HH:MM:SS.ss.
+	 * -dec specified as [+|-]DD:MM:SS.ss.
+	 * -error_box specified as a radius in decimal arc-minutes.
+	 * @param args An array of string containing the command name, and it's arguments.
+	 * @return A string, containing the return string to send back over the control socket to the connected
+	 *         client.
+	 * @see #doGammaRayBurstAlertControlCommand
+	 * @see #quit
+	 */
+	protected String doControlCommand(String args[])
+	{
+		try
+		{
+			if(args.length < 1)
+			{
+				return new String("No command specified.\n");
+			}
+			if(args[0].equals("disable"))
+			{
+				if(args.length == 1)
+				{
+					enableSocketAlerts = false;
+					enableManualAlerts = false;
+					logger.log("doControlCommand:All alerts disabled.");
+					return new String("All alerts disabled.\n");
+				}
+				else if(args.length == 2)
+				{
+					if(args[1].equals("all"))
+					{
+						enableSocketAlerts = false;
+						enableManualAlerts = false;
+						logger.log("doControlCommand:All alerts disabled.");
+						return new String("All alerts disabled.\n");
+					}
+					else if(args[1].equals("socket"))
+					{
+						enableSocketAlerts = false;
+						logger.log("doControlCommand:Socket alerts disabled.");
+						return new String("Socket alerts disabled.\n");
+					}
+					else if(args[1].equals("manual"))
+					{
+						enableManualAlerts = false;
+						logger.log("doControlCommand:Manual alerts disabled.");
+						return new String("Manual alerts disabled.\n");
+					}
+					else if(args[1].equals("status"))
+					{
+						logger.log("doControlCommand:Socket alerts enable:"+enableSocketAlerts+
+								  ", Manual alerts enable:"+enableManualAlerts+".");
+						return new String("Socket alerts enable:"+enableSocketAlerts+
+								  ", Manual alerts enable:"+enableManualAlerts+".\n");
+					}
+					else
+						return new String("Illegal disable command : disable [all|socket|manual|status].\n");		
+				}
+				else
+					return new String("Illegal disable command : disable [all|socket|manual|status].\n");
+			}
+			else if(args[0].equals("enable"))
+			{
+				if(args.length == 1)
+				{
+					enableSocketAlerts = true;
+					enableManualAlerts = true;
+					logger.log("doControlCommand:All alerts enabled.");
+					return new String("All alerts enabled.\n");
+				}
+				else if(args.length == 2)
+				{
+					if(args[1].equals("all"))
+					{
+						enableSocketAlerts = true;
+						enableManualAlerts = true;
+						logger.log("doControlCommand:All alerts enabled.");
+						return new String("All alerts enabled.\n");
+					}
+					else if(args[1].equals("socket"))
+					{
+						enableSocketAlerts = true;
+						logger.log("doControlCommand:Socket alerts enabled.");
+						return new String("Socket alerts enabled.\n");
+					}
+					else if(args[1].equals("manual"))
+					{
+						enableManualAlerts = true;
+						logger.log("doControlCommand:Manual alerts enabled.");
+						return new String("Manual alerts enabled.\n");
+					}
+					else if(args[1].equals("status"))
+					{
+						logger.log("doControlCommand:Socket alerts enable:"+enableSocketAlerts+
+								  ", Manual alerts enable:"+enableManualAlerts+"");
+						return new String("Socket alerts enable:"+enableSocketAlerts+
+								  ", Manual alerts enable:"+enableManualAlerts+".\n");
+					}
+					else
+						return new String("Illegal enable command : enable [all|socket|manual|status].\n");		
+				}
+				else
+					return new String("Illegal enable command : enable [all|socket|manual|status].\n");
+			}
+			else if(args[0].equals("gamma_ray_burst_alert"))
+			{
+				String returnString = null;
+				returnString = doGammaRayBurstAlertControlCommand(args);
+				return returnString;
+			}
+			else if(args[0].equals("help"))
+			{
+				return new String("GCNDatagramAlertData Command Server Help:\n"+
+						  "\tdisable [all|socket|manual|status]\n"+
+						  "\tenable [all|socket|manual|status]\n"+
+						  "\tgamma_ray_burst_alert -ra <ra> -dec <dec> -epoch <epoch> -error_box <error_box> -trigger_number <n> -sequence_number <n> -grb_date <date> -notice_date <date> -HETE -SWIFT -INTEGRAL -test\n"+
+						  "\thelp\n"+
+						  "\tquit\n"+
+						  "\ttest\n"+
+						  "Dates specified in the form: yyyy-MM-dd'T'HH:mm:ss\n"+
+						  "-ra specified as HH:MM:SS.ss\n"+
+						  "-dec specified as [+|-]DD:MM:SS.ss\n"+
+						  "-error_box specified as a radius in decimal arc-minutes\n");
+			}
+			else if(args[0].equals("quit"))
+			{
+				quit();
+				if(controlServerThread != null)
+					controlServerThread.quit();
+				logger.log("doControlCommand:Quiting GCNDatagramScriptStarter.");
+				return new String("Quiting GCNDatagramScriptStarter.\n");
+			}
+			else if(args[0].equals("test"))
+			{
+				logger.log("doControlCommand:Test command received.");
+				return new String("Test command received.\n");
+			}
+			return new String("Unknown command:"+args[0]+"\n");
+		}
+		catch(Exception e)
+		{
+			return new String("doControlCommand:An Exception occured:"+e+"\n");
+		}
+	}
+
+	/**
+	 * Method to perform a manual script start using the gamma_ray_burst_alert command from the control socket.
+	 * @param args An array of string containing the command name, and it's arguments.
+	 * @return A string, containing the return string to send back over the control socket to the connected
+	 *         client.
+	 * @exception Exception Thrown if startScript fails.
+	 * @see #doControlCommand
+	 * @see #startScript
+	 */
+	protected String doGammaRayBurstAlertControlCommand(String args[]) throws Exception
+	{
+		SimpleDateFormat dateFormat = null;
+		Date date = null;
+		int intValue;
+		double doubleValue;
+
+		dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+		// acquire lock on alert data
+		synchronized(alertDataLock)
+		{
+			alertData = new GCNDatagramAlertData();
+			// Set notice date to now. Note this should really be set to pkt_sod,
+			// but this won't work if the notice is sent around midnight.
+			alertData.setNoticeDate(new Date());
+			for(int i = 1; i < args.length; i++)
+			{
+				if(args[i].equals("-ra"))
+				{
+					if((i+1) < args.length)
+					{
+						try
+						{
+							RA ra = null;
+							ra = new RA();
+							ra.parseColon(args[i+1]);
+							alertData.setRA(ra);
+						}
+						catch(Exception e)
+						{
+							return new String("doGammaRayBurstAlertControlCommand:"+
+									  "Parsing RA:"+args[i+1]+" failed:"+e+".\n");
+						}
+						i++;
+					}
+					else
+					{
+						return new String("doGammaRayBurstAlertControlCommand:"+
+								  "-ra requires a string argument.\n");
+					}
+				}
+				else if(args[i].equals("-dec"))
+				{
+					if((i+1) < args.length)
+					{
+						try
+						{
+							Dec dec = null;
+							dec = new Dec();
+							dec.parseColon(args[i+1]);
+							alertData.setDec(dec);
+						}
+						catch(Exception e)
+						{
+							return new String("doGammaRayBurstAlertControlCommand:"+
+									  "Parsing Dec:"+args[i+1]+" failed:"+e+"\n");
+						}
+						i++;
+					}
+					else
+					{
+						return new String("doGammaRayBurstAlertControlCommand:"+
+								  "-dec requires a string argument.\n");
+					}
+				}
+				else if(args[i].equals("-epoch"))
+				{
+					if((i+1) < args.length)
+					{
+						try
+						{
+							doubleValue = Double.parseDouble(args[i+1]);
+							alertData.setEpoch(doubleValue);
+						}
+						catch(Exception e)
+						{
+							return new String("doGammaRayBurstAlertControlCommand:"+
+								   "Parsing epoch:"+args[i+1]+" failed:"+e+"\n");
+						}
+						i++;
+					}
+					else
+					{
+						return new String("doGammaRayBurstAlertControlCommand:"+
+								  "-epoch requires a double argument.\n");
+					}
+				}
+				else if(args[i].equals("-error_box"))
+				{
+					if((i+1) < args.length)
+					{
+						try
+						{
+							// error box is a radius in decimal arc-minutes
+							doubleValue = Double.parseDouble(args[i+1]);
+							alertData.setErrorBoxSize(doubleValue);
+						}
+						catch(Exception e)
+						{
+							return new String("doGammaRayBurstAlertControlCommand:"+
+								   "Parsing error box:"+args[i+1]+" failed:"+e+"\n");
+						}
+						i++;
+					}
+					else
+					{
+						return new String("doGammaRayBurstAlertControlCommand:"+
+								  "-error box requires a double argument.\n");
+					}
+				}
+				else if(args[i].equals("-trigger_number"))
+				{
+					if((i+1) < args.length)
+					{
+						try
+						{
+							intValue = Integer.parseInt(args[i+1]);
+							alertData.setTriggerNumber(intValue);
+						}
+						catch(Exception e)
+						{
+							return new String("doGammaRayBurstAlertControlCommand:"+
+		       					   "Parsing trigger number:"+args[i+1]+" failed:"+e+"\n");
+						}
+						i++;
+					}
+					else
+					{
+						return new String("doGammaRayBurstAlertControlCommand:"+
+								  "-trigger_number requires an integer argument.\n");
+					}
+				}
+				else if(args[i].equals("-sequence_number"))
+				{
+					if((i+1) < args.length)
+					{
+						try
+						{
+							intValue = Integer.parseInt(args[i+1]);
+							alertData.setSequenceNumber(intValue);
+						}
+						catch(Exception e)
+						{
+							return new String("doGammaRayBurstAlertControlCommand:"+
+		       					   "Parsing sequence number:"+args[i+1]+" failed:"+e+"\n");
+						}
+						i++;
+					}
+					else
+					{
+						return new String("doGammaRayBurstAlertControlCommand:"+
+								  "-sequence_number requires an integer argument.\n");
+					}
+				}
+				else if(args[i].equals("-HETE"))
+				{
+					alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_HETE);
+				}
+				else if(args[i].equals("-INTEGRAL"))
+				{
+					alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_INTEGRAL);
+				}
+				else if(args[i].equals("-SWIFT"))
+				{
+					alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_SWIFT);
+				}
+				else if(args[i].equals("-test"))
+				{
+					alertData.setTest(true);
+				}
+				else if(args[i].equals("-notice_date"))
+				{
+					if((i+1) < args.length)
+					{
+						try
+						{
+							date = dateFormat.parse(args[i+1]);
+							alertData.setNoticeDate(date);
+						}
+						catch(Exception e)
+						{
+							return new String("doGammaRayBurstAlertControlCommand:"+
+		       					   "Parsing notice date:"+args[i+1]+" failed:"+e+"\n");
+						}
+						i++;
+					}
+					else
+					{
+						return new String("doGammaRayBurstAlertControlCommand:"+
+					"-notice_date requires an argument of the form yyyy-MM-dd'T'HH:mm:ss.\n");
+					}
+				}
+				else if(args[i].equals("-grb_date"))
+				{
+					if((i+1) < args.length)
+					{
+						try
+						{
+							date = dateFormat.parse(args[i+1]);
+							alertData.setGRBDate(date);
+						}
+						catch(Exception e)
+						{
+							return new String("doGammaRayBurstAlertControlCommand:"+
+		       					   "Parsing GRB date:"+args[i+1]+" failed:"+e+"\n");
+						}
+						i++;
+					}
+					else
+					{
+						return new String("doGammaRayBurstAlertControlCommand:"+
+					"-grb_date requires an argument of the form yyyy-MM-dd'T'HH:mm:ss.\n");
+					}
+				}
+				else
+					return new String("doGammaRayBurstAlertControlCommand:"+
+							  "Recieved unknown command argument:"+args[i]+".\n");
+			}
+		}
+		if(enableManualAlerts == false)
+		{
+			logger.log("Failed to start script. "+
+				   "Manual Socket alerts have been disabled from the control socket.\n");
+			return new String("Failed to start script. Manual Socket alerts have been disabled from the control socket.\n");
+		}
+		// ensure RA filled in
+		if(alertData.getRA() == null)
+		{
+			logger.log("doGammaRayBurstAlertControlCommand: RA was NULL.");
+			return new String("doGammaRayBurstAlertControlCommand: RA was NULL.");
+		}
+		// ensure Dec filled in
+		if(alertData.getDec() == null)
+		{
+			logger.log("doGammaRayBurstAlertControlCommand: Dec was NULL.");
+			return new String("doGammaRayBurstAlertControlCommand: Dec was NULL.");
+		}
+		if(alertData.getAlertType() == 0)
+		{
+			logger.log("doGammaRayBurstAlertControlCommand: No alert type specified.");
+			return new String("doGammaRayBurstAlertControlCommand: No alert type specified.");
+		}
+		// Actually try and start the script
+		startScript();
+		return new String("doGammaRayBurstAlertControlCommand: Script started.\n");
+	}
+
+	/**
 	 * Argument parser.
 	 * @param args The argument list.
-	 * @see #setPort
+	 * @see #setMulticastPort
 	 * @see #setGroupAddress
 	 * @see #setScript
 	 * @see #setMaxErrorBox
@@ -1393,6 +2053,9 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see #addAllowedAlerts
 	 * @see #swiftSolnStatusRejectMask
 	 * @see #swiftSolnStatusAcceptMask
+	 * @see #controlServerPort
+	 * @see #enableSocketAlerts
+	 * @see #enableManualAlerts
 	 * @see GCNDatagramAlertData#ALERT_TYPE_HETE
 	 * @see GCNDatagramAlertData#ALERT_TYPE_INTEGRAL
 	 * @see GCNDatagramAlertData#ALERT_TYPE_SWIFT
@@ -1412,6 +2075,38 @@ public class GCNDatagramScriptStarter implements Runnable
 				addAllowedAlerts(GCNDatagramAlertData.ALERT_TYPE_HETE|
 						 GCNDatagramAlertData.ALERT_TYPE_INTEGRAL|
 						 GCNDatagramAlertData.ALERT_TYPE_SWIFT);
+			}
+			else if(args[i].equals("-control_port"))
+			{
+				if((i+1) < args.length)
+				{
+					try
+					{
+						intValue = Integer.parseInt(args[i+1]);
+						controlServerPort = intValue;
+					}
+					catch(Exception e)
+					{
+						System.err.println("GCNDatagramScriptStarter:Parsing Control Port:"+
+								   args[i+1]+" failed:"+e);
+						e.printStackTrace(System.err);
+						System.exit(3);
+					}
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNDatagramScriptStarter:-control_port requires a number.");
+					System.exit(4);
+				}
+			}
+			else if(args[i].equals("-disable_manual_alerts"))
+			{
+				enableManualAlerts = false;
+			}
+			else if(args[i].equals("-disable_socket_alerts"))
+			{
+				enableSocketAlerts = false;
 			}
 			else if(args[i].equals("-group_address"))
 			{
@@ -1476,19 +2171,19 @@ public class GCNDatagramScriptStarter implements Runnable
 					System.exit(4);
 				}
 			}
-			else if(args[i].equals("-port"))
+			else if(args[i].equals("-multicast_port"))
 			{
 				if((i+1) < args.length)
 				{
 					try
 					{
 						intValue = Integer.parseInt(args[i+1]);
-						setPort(intValue);
+						setMulticastPort(intValue);
 					}
 					catch(Exception e)
 					{
-						System.err.println("GCNDatagramScriptStarter:Parsing Port:"+args[i+1]+
-								   " failed:"+e);
+						System.err.println("GCNDatagramScriptStarter:Parsing Multicast Port:"+
+								   args[i+1]+" failed:"+e);
 						e.printStackTrace(System.err);
 						System.exit(3);
 					}
@@ -1496,7 +2191,7 @@ public class GCNDatagramScriptStarter implements Runnable
 				}
 				else
 				{
-					System.err.println("GCNDatagramScriptStarter:-port requires a number.");
+					System.err.println("GCNDatagramScriptStarter:-multicast_port requires a number.");
 					System.exit(4);
 				}
 			}
@@ -1589,6 +2284,7 @@ public class GCNDatagramScriptStarter implements Runnable
 
 	/**
 	 * Help method.
+	 * @see #DEFAULT_CONTROL_PORT
 	 */
 	protected void help()
 	{
@@ -1596,13 +2292,17 @@ public class GCNDatagramScriptStarter implements Runnable
 		System.out.println("GCNDatagramScriptStarter Help");
 		System.out.println("java -Dhttp.proxyHost=wwwcache.livjm.ac.uk "+
 				   "-Dhttp.proxyPort=8080 GCNDatagramScriptStarter \n"+
-				   "\t[-port <n>][-group_address <address>]"+
+				   "\t[-multicast_port <n>][-group_address <address>]"+
+				   "\t[-control_port <n>][-disable_manual_alerts][-disable_socket_alerts]"+
 				   "\t[-script <filename>][-all][-hete][-integral][-swift]\n"+
 				   "\t[-max_error_box|-meb <arcsecs>]"+
 				   "\t[-swift_soln_status_accept_mask|-sssam <bit mask>]"+
 				   "\t[-swift_soln_status_reject_mask|-sssrm <bit mask>]");
 		System.out.println("-script specifies the script/program to call on a successful alert.");
 		System.out.println("-all specifies to call the script for all types of alerts.");
+		System.out.println("-control_port specifies the port the control server sits on.");
+		System.out.println("-disable_manual_alerts does not call the script when an alert is requested from the control socket.");
+		System.out.println("-disable_socket_alerts does not call the script when an alert is generated from the multicast socket.");
 		System.out.println("-hete specifies to call the script for HETE alerts.");
 		System.out.println("-integral specifies to call the script for INTEGRAL alerts.");
 		System.out.println("-swift specifies to call the script for SWIFT alerts.");
@@ -1610,6 +2310,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		System.out.println("-sssam sets the Swift solnStatus bits that MUST be present for the script to be started.");
 		System.out.println("-sssrm sets the Swift solnStatus bits that MUST NOT be present for the script to be started.");
 		System.out.println("-sssam and -sssrm can be specified in hexidecimal using the '0x' prefix.");
+		System.out.println("The default control port number is "+DEFAULT_CONTROL_PORT+".");
 	}
 
 	// static main
@@ -1662,6 +2363,10 @@ public class GCNDatagramScriptStarter implements Runnable
 		 */
 		Process process = null;
 
+		/**
+		 * Constructor.
+		 * @param p The process to monitor.
+		 */
 		public ScriptThread(Process p)
 		{
 			super();
@@ -1714,8 +2419,17 @@ public class GCNDatagramScriptStarter implements Runnable
 	 */
 	public class InputStreamThread implements Runnable
 	{
+		/**
+		 * The stream we are reading from.
+		 */
 		InputStream inputStream = null;
+		/**
+		 * The process we are monitoring.
+		 */
 		Process process = null;
+		/**
+		 * The name of the stream we are monitoring.
+		 */
 		String streamName = null;
 
 		/**
@@ -1735,6 +2449,22 @@ public class GCNDatagramScriptStarter implements Runnable
 			streamName = s;
 		}
 
+		/**
+		 * Run method for this thread.
+		 * <ul>
+		 * <li>This creates a buffered input stream around the input stream.
+		 * <li>It enters a loop until the stream returns EOF:
+		 *     <ul>
+		 *     <li>Bytes are read from the buffered input stream.
+		 *     <li>The bytes are appeanded to a string buffer.
+		 *     <li>If a newline character is encountered, the string buffer is logged to the logger,
+		 *         and the string buffer reset.
+		 *     </ul>
+		 * </ul>
+		 * @see #inputStream
+		 * @see #streamName
+		 * @see GCNDatagramScriptStarter#logger
+		 */
 		public void run()
 		{
 			StringBuffer sb = null;
@@ -1771,9 +2501,212 @@ public class GCNDatagramScriptStarter implements Runnable
 			}
 		}
 	}
+
+	/**
+	 * Inner class to run a control server.
+	 */
+	public class ControlServerThread implements Runnable
+	{
+		/**
+		 * The port the control server is running on.
+		 */
+		protected int portNumber = 0;
+		/**
+		 * Set to true to stop the thread.
+		 */
+		protected boolean quit = false;
+		/**
+		 * The server socket.
+		 */
+		protected ServerSocket serverSocket = null;
+
+		/**
+		 * Default constructor.
+		 */
+		public ControlServerThread()
+		{
+			super();
+		}
+
+		/**
+		 * The run method.
+		 * Sets up the server socket. Enter a while loop until quit is true.
+		 * Gets a connection socket, and calls startConnectionThread to start a connection thread
+		 * to handle the connection.
+		 * @see #serverSocket
+		 * @see #quit
+		 * @see#startConnectionThread
+		 */
+		public void run()
+		{
+			Socket connectionSocket = null;
+
+			try
+			{
+				// create server socket
+				serverSocket = new ServerSocket(portNumber);
+				while(quit == false)
+				{
+					try
+					{
+						connectionSocket = serverSocket.accept();
+						startConnectionThread(connectionSocket);
+					}
+					catch(Exception e)
+					{
+						logger.error(this.getClass().getName()+":run:",e);
+					}
+				}
+			}
+			catch(Exception e)
+			{
+				logger.error(this.getClass().getName()+":run:server socket",e);
+			}
+		}
+
+		/**
+		 * Method to set the port number of the control server port.
+		 * @param p The port number
+		 * @see #portNumber
+		 */
+		public void setPort(int p)
+		{
+			portNumber = p;
+		}
+
+		/**
+		 * Quit the server socket.
+		 * Set quit to true, and close the server socket (if it exists).
+		 * @exception IOException Can be thrown when closing the server socket.
+		 * @see #quit
+		 * @see #serverSocket
+		 */
+		public void quit() throws IOException
+		{
+			quit = true;
+			if(serverSocket != null)
+				serverSocket.close();
+		}
+
+		/**
+		 * Start a connection thread using the specified socket for communication.
+		 * @param s The socket to communicate over.
+		 * @see #ControlServerConnectionThread
+		 */
+		protected void startConnectionThread(Socket s)
+		{
+			ControlServerConnectionThread csct = null;
+			Thread t = null;
+
+			csct = new ControlServerConnectionThread();
+			csct.setSocket(s);
+			t = new Thread(csct);
+			t.start();
+		}
+	}
+
+	/**
+	 * Class implementing a connection from the control server socket.
+	 */
+	public class ControlServerConnectionThread implements Runnable
+	{
+		/**
+		 * The connection socket.
+		 */
+		protected Socket socket = null;
+		/**
+		 * Default constructor.
+		 */
+		public ControlServerConnectionThread()
+		{
+			super();
+		}
+
+		/**
+		 * Method to set the connection socket.
+		 * @param s The socket.
+		 * @see #socket
+		 */
+		public void setSocket(Socket s)
+		{
+			socket = s;
+		}
+
+		/**
+		 * Run method.
+		 * <ul>
+		 * <li>Gets an input reader (getInputReader).
+		 * <li>Gets an output reader (getOutputWriter).
+		 * <li>Reads in the command string.
+		 * <li>Splits it by whitespace.
+		 * <li>Passes the array of command and arguments to doControlCommand
+		 * <li>Writes the returned string to the socket.
+		 * <li>Flushes the writer.
+		 * <li>Closes reader, writer and connection socket.
+		 * </ul>
+		 * This method contains the JDK v1.4 method call String.split.
+		 * @since 1.4
+		 * @see #getInputReader
+		 * @see #getOutputWriter
+		 * @see GCNDatagramScriptStarter#doControlCommand
+		 */
+		public void run()
+		{
+			BufferedReader reader = null;
+			PrintWriter writer = null;
+			String commandString = null;
+			String[] commandArray = null;
+			String returnString = null;
+
+			try
+			{
+				reader = getInputReader();
+				writer = getOutputWriter();
+				writer.flush();
+				commandString = reader.readLine();
+				// This next line is JDK 1.4 only, regex split.
+				// \s means split on whitespace
+				commandArray = commandString.split("\\s");
+				returnString = doControlCommand(commandArray);
+				writer.print(returnString);
+				writer.flush();
+				writer.close();
+				reader.close();
+				socket.close();
+				socket = null;
+			}
+			catch(Exception e)
+			{
+				logger.error(this.getClass().getName()+":run:",e);
+			}
+
+		}
+
+		/**
+		 * Get a buffered reader from the socket.
+		 * @see #socket
+		 */
+		protected BufferedReader getInputReader() throws IOException
+		{
+			return new BufferedReader(new InputStreamReader(socket.getInputStream()));
+		}
+
+		/**
+		 * Get a buffered writer from the socket.
+		 * @see #socket
+		 */
+		protected PrintWriter getOutputWriter() throws IOException
+		{
+			return new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket.getOutputStream())));
+		}
+
+	}
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.17  2005/02/17 17:07:06  cjm
+// Added swiftSolnStatusAcceptMask and swiftSolnStatusRejectMask.
+//
 // Revision 1.16  2005/02/15 15:48:14  cjm
 // Added Swift error box logging.
 //
