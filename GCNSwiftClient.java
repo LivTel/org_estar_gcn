@@ -1,9 +1,14 @@
+// GCNSwiftClient.java
+// $Header: /home/cjm/cvs/org_estar_gcn/GCNSwiftClient.java,v 1.2 2005-02-03 10:22:27 cjm Exp $
+package org.estar.gcn;
+
 import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.text.*;
 
-import ngat.util.*;
+//import ngat.util.*;
+import org.estar.astrometry.*;
 
 /**
  * Client side tester for GCN_Server.
@@ -15,7 +20,19 @@ public class GCNSwiftClient extends Thread
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNSwiftClient.java,v 1.1 2005-01-10 14:45:21 cjm Exp $";
+	public final static String RCSID = "$Id: GCNSwiftClient.java,v 1.2 2005-02-03 10:22:27 cjm Exp $";
+	/**
+	 * Integer used to describe alert type.
+	 */
+	public final static int ALERT_TYPE_UNKNOWN = 0;
+	/**
+	 * Integer used to describe alert type.
+	 */
+	public final static int ALERT_TYPE_BAT = 1;
+	/**
+	 * Integer used to describe alert type.
+	 */
+	public final static int ALERT_TYPE_XRT = 2;
 	/**
 	 * Hostname.
 	 */
@@ -29,11 +46,11 @@ public class GCNSwiftClient extends Thread
 	 */
 	int seq;
 	/**
-	 *
+	 * Number of conenction attempts.
 	 */
 	int count;
 	/**
-	 *
+	 * Delay in milliseconds between connection attempts.
 	 */
 	long delay;
 	/**
@@ -66,84 +83,289 @@ public class GCNSwiftClient extends Thread
 		if (args.length == 0)
 		{
 			usage();
-			return;
+			System.exit(0);
 		}
-
-		CommandParser parser = new CommandParser("@");
-		try
-		{
-			parser.parse(args);
-		} catch (ParseException px)
-		{
-			System.err.println("Error parsing command arguments: "+px);
-			usage();
-			return;
-		}
-		double ra      = 0.0;
-		double dec     = 0.0;
+		RA ra          = null;
+		Dec dec        = null;
 		double error   = 0.0;
 		Date   date    = new Date();
 		String dstr    = "";
 		String tstr    = "";
 		int    trignum = 0;
 		int    mesgnum = 0;
-
-		ConfigurationProperties map = parser.getMap();
-		
-		try {
-			ra    = map.getDoubleValue("ra", 0.0);
-			dec   = map.getDoubleValue("dec", 0.0);
-			error = map.getDoubleValue("error", 0.0);
-			trignum = map.getIntValue("trigno", -1);
-			mesgnum = map.getIntValue("mesgno", -1);
-		} catch (Exception e) {}
-		
-		dstr  = map.getProperty("date", "");
-	
-		SimpleDateFormat sdf = new SimpleDateFormat("EEE dd MMM yyyy HH:mm:ss");
-	
-		try {
-			date = sdf.parse(dstr);
-			System.err.println("Successfully Parsed date to: "+sdf.format(date)+" = "+date.getTime());
-		} catch (ParseException px) {	   
-			date = new Date(); 
-			System.err.println("Error parsing date: "+px+" setting to now: "+sdf.format(date));
-		}
-		String host = map.getProperty("host", "ltccd1");
+		String host = null;
 		int port = 8010;
-		try {
-			port = map.getIntValue("port", 8010);
-		} catch (Exception e) {}
-		
+		int alertType = ALERT_TYPE_UNKNOWN;
+		// parse arguments
+		SimpleDateFormat sdf = new SimpleDateFormat("EEE dd MMM yyyy HH:mm:ss");
+		for(int i = 0; i < args.length; i++)
+		{
+			if(args[i].equals("-bat"))
+			{
+				if(alertType == ALERT_TYPE_UNKNOWN)
+					alertType = ALERT_TYPE_BAT;
+				else
+				{
+					System.err.println("GCNSwiftClient:BAT alert type specified but alert type already:"+alertType);
+					System.exit(1);
+				}
+			}
+			else if(args[i].equals("-date"))
+			{
+				if((i+1) < args.length)
+				{
+					try
+					{
+						date = sdf.parse(args[i+1]);
+						System.err.println("Successfully Parsed date to: "+sdf.format(date)+" = "+date.getTime());
+					}
+					catch(Exception e)
+					{
+						System.err.println("GCNSwiftClient:Parsing date:"+args[i+1]+
+								   " failed:"+e);
+						e.printStackTrace(System.err);
+						System.exit(2);
+					}
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNSwiftClient:-date requires a date of the format EEE dd MMM yyyy HH:mm:ss.");
+					System.exit(3);
+				}
+			}
+			else if(args[i].equals("-dec"))
+			{
+				if((i+1) < args.length)
+				{
+					try
+					{
+						dec = new Dec();
+						dec.parseColon(args[i+1]);
+					}
+					catch(Exception e)
+					{
+						System.err.println("GCNSwiftClient:Parsing declination:"+args[i+1]+
+								   " failed:"+e);
+						e.printStackTrace(System.err);
+						System.exit(4);
+					}
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNSwiftClient:-dec requires a declination of the form [+|-]DD:MM:SS.ss.");
+					System.exit(5);
+				}
+			}
+			else if(args[i].equals("-error"))
+			{
+				if((i+1) < args.length)
+				{
+					try
+					{
+						error = Double.parseDouble(args[i+1]);
+					}
+					catch(Exception e)
+					{
+						System.err.println("GCNSwiftClient:Parsing error box:"+args[i+1]+
+								   " failed:"+e);
+						e.printStackTrace(System.err);
+						System.exit(6);
+					}
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNSwiftClient:-error requires a error box radius in decimal arcminutes.");
+					System.exit(7);
+				}
+			}
+			else if(args[i].equals("-help"))
+			{
+				usage();
+				System.exit(0);
+			}
+			else if(args[i].equals("-host"))
+			{
+				if((i+1) < args.length)
+				{
+					host = args[i+1];
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNSwiftClient:-host requires a hostname.");
+					System.exit(8);
+				}
+			}
+			else if(args[i].equals("-port"))
+			{
+				if((i+1) < args.length)
+				{
+					try
+					{
+						port = Integer.parseInt(args[i+1]);
+					}
+					catch(Exception e)
+					{
+						System.err.println("GCNSwiftClient:Parsing port number:"+args[i+1]+
+								   " failed:"+e);
+						e.printStackTrace(System.err);
+						System.exit(9);
+					}
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNSwiftClient:-port requires an port number.");
+					System.exit(10);
+				}
+			}
+			else if(args[i].equals("-mesgno"))
+			{
+				if((i+1) < args.length)
+				{
+					try
+					{
+						mesgnum = Integer.parseInt(args[i+1]);
+					}
+					catch(Exception e)
+					{
+						System.err.println("GCNSwiftClient:Parsing message number:"+args[i+1]+
+								   " failed:"+e);
+						e.printStackTrace(System.err);
+						System.exit(11);
+					}
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNSwiftClient:-mesgno requires an integer.");
+					System.exit(12);
+				}
+			}
+			else if(args[i].equals("-ra"))
+			{
+				if((i+1) < args.length)
+				{
+					try
+					{
+						ra = new RA();
+						ra.parseColon(args[i+1]);
+					}
+					catch(Exception e)
+					{
+						System.err.println("GCNSwiftClient:Parsing right ascension:"+args[i+1]+
+								   " failed:"+e);
+						e.printStackTrace(System.err);
+						System.exit(13);
+					}
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNSwiftClient:-ra requires a right ascension of the form [+|-]HH:MM:SS.ss.");
+					System.exit(14);
+				}
+			}
+			else if(args[i].equals("-trigno"))
+			{
+				if((i+1) < args.length)
+				{
+					try
+					{
+						trignum = Integer.parseInt(args[i+1]);
+					}
+					catch(Exception e)
+					{
+						System.err.println("GCNSwiftClient:Parsing trigger number:"+args[i+1]+
+								   " failed:"+e);
+						e.printStackTrace(System.err);
+						System.exit(15);
+					}
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNSwiftClient:-trigno requires an integer.");
+					System.exit(16);
+				}
+			}
+			else if(args[i].equals("-xrt"))
+			{
+				if(alertType == ALERT_TYPE_UNKNOWN)
+					alertType = ALERT_TYPE_XRT;
+				else
+				{
+					System.err.println("GCNSwiftClient:XTT alert type specified but alert type already:"+alertType);
+					System.exit(17);
+				}
+			}
+			else
+			{
+				System.err.println("GCNSwiftClient: Unknown argument:"+args[i]);
+				System.exit(18);
+			}
+		}// end for
+		// create client
+		if(host == null)
+		{
+			System.err.println("GCNSwiftClient: No host defined.");
+			System.exit(19);
+		}
+		if(port == 0)
+		{
+			System.err.println("GCNSwiftClient: No port number defined.");
+			System.exit(20);
+		}
 		GCNSwiftClient client = new GCNSwiftClient(host, port, 2000);
-	
-		String bat = map.getProperty("bat", "none");
-		String xrt = map.getProperty("xrt", "none");
-		if (!bat.equals("none")) {
-			try {
+
+		if(alertType == ALERT_TYPE_BAT)
+		{
+			if(ra == null)
+			{
+				System.err.println("GCNSwiftClient: No ra defined.");
+				System.exit(21);
+			}
+			if(dec == null)
+			{
+				System.err.println("GCNSwiftClient: No dec defined.");
+				System.exit(22);
+			}
+			try
+			{
 				client.connect();
 				client.sendSwiftBATAlert(ra, dec, error, date, trignum, mesgnum);
-			} catch (IOException iox) {
+			} 
+			catch (IOException iox)
+			{
 				System.err.println("Error opening connection to server: "+iox);
 				iox.printStackTrace(System.err);
-				return;
+				System.exit(23);
 			}
 		}
+		else
+		{
+			System.err.println("Alert type: "+alertType+" not supported yet.");
+			System.exit(24);
+		}
+		System.exit(0);
 	}
 
 	public static void usage()
 	{
-		System.err.println("USAGE: java GCNSwiftClient [options]"+
+		System.err.println("USAGE: java org.estar.gcn.GCNSwiftClient [options]"+
 				   "\n where the following options are supported:-"+
-				   "\n @host  <host-addr> Host address for the GCN Server."+
-				   "\n @port  <port> Port to connect to at the server."+
-				   "\n @ra    <ra> RA of a burst source (decimal degrees)."+
-				   "\n @dec   <dec> Declination of a burst source (decimal degrees)."+
-				   "\n @error <size> Radius of the error box (arc minutes)."+
-				   "\n @date  <date> Date of the burst (EEE dd MMM yyyy HH:mm:ss)."+
-				   "\n @bat <id>   Send a Swift BAT alert with GRB-ID = id."+
-				   "\n @trigno <num> Burst trigger number."+
-				   "\n @mesgno <num> Message sequence number (for trigno)");
+				   "\n -host  <host-addr> Host address for the GCN Server."+
+				   "\n -port  <port> Port to connect to at the server."+
+				   "\n -ra    <ra> RA of a burst source HH:MM:SS.ss."+
+				   "\n -dec   <dec> Declination of a burst source [+|-]DD:MM:SS.ss."+
+				   "\n -error <size> Radius of the error box (arc minutes)."+
+				   "\n -date  <date> Date of the burst (EEE dd MMM yyyy HH:mm:ss)."+
+				   "\n -bat          Send a Swift BAT alert."+
+				   "\n -trigno <num> Burst trigger number."+
+				   "\n -mesgno <num> Message sequence number (for trigno)");
 	}
 
 	public GCNSwiftClient(String host, int port, long delay)
@@ -263,10 +485,10 @@ public class GCNSwiftClient extends Thread
 		int mesgNum;
 		Date date;
 
-		SwiftBatAlert(double ra, double dec, double error, Date date, int trigNum, int mesgNum)
+		SwiftBatAlert(RA ra, Dec dec, double error, Date date, int trigNum, int mesgNum)
 		{
-			this.burstRA  = (int)(ra*10000.0);
-			this.burstDec = (int)(dec*10000.0);
+			this.burstRA = (int)((ra.toArcSeconds()/3600.0)*10000.0);
+			this.burstDec = (int)((dec.toArcSeconds()/3600.0)*10000.0);
 			this.error = error;
 			this.trigNum = trigNum;
 			this.mesgNum = mesgNum;
@@ -322,7 +544,7 @@ public class GCNSwiftClient extends Thread
 		}
 	}
        
-	public void sendSwiftBATAlert(double ra, double dec, double error, Date date, int trigNum, int mesgNum) 
+	public void sendSwiftBATAlert(RA ra,Dec dec, double error, Date date, int trigNum, int mesgNum) 
 		throws IOException
 	{
 		SwiftBatAlert alert = new SwiftBatAlert(ra, dec, error, date, trigNum, mesgNum);
@@ -330,3 +552,6 @@ public class GCNSwiftClient extends Thread
 	}
 }
 
+//
+// $Log: not supported by cvs2svn $
+//
