@@ -19,7 +19,7 @@ import org.estar.astrometry.*;
  * </pre>
  * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.6 $
+ * @version $Revision: 1.7 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -27,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.6 2005-01-20 19:21:50 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.7 2005-01-21 14:13:25 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -269,6 +269,9 @@ public class GCNDatagramScriptStarter implements Runnable
 		    case 51:
 			logger.log(" [INTEGRAL_POINTDIR]");
 			readIntegralPointing();
+			break;
+		    case 52:
+			logger.log(" [INTEGRAL_SPIACS]");
 			break;
 		    case 53:
 			logger.log(" [INTEGRAL_WAKEUP]");
@@ -1432,6 +1435,11 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.6  2005/01/20 19:21:50  cjm
+// Second attempt at fix for Integral test alerts.
+// Can't test Status flags & (1<<31) > 1, because of signedness of ints.
+// Now trying Status flags & (1<<31) != 0.
+//
 // Revision 1.5  2005/01/20 15:35:55  cjm
 // No longer set alert type for HETE_ALERT - it contains no alert position.
 // Refined integral test notice test so it actually works - also added more testMpos prints
