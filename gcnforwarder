@@ -2,10 +2,11 @@
 #
 # Liverpool John Moores University
 #
-#ident	"$Id: gcnforwarder,v 1.3 2005-02-03 10:46:36 cjm Exp $"
+#ident	"$Id: gcnforwarder,v 1.4 2005-02-03 10:48:37 cjm Exp $"
 GCN_FORWARDER_HOME=/space/home/dev/bin/estar/classes
 GCN_FORWARDER_PIDFILE=/space/home/dev/bin/estar/classes/gcnforwarder.pid
-GCN_FORWARDER_OUPTUT_FILE=/space/home/dev/tmp/estar/gcn_forwarder_output.txt
+DATE_STRING=`/bin/date +"%Y-%m-%dT%H:%M:%S"`
+GCN_FORWARDER_OUPTUT_FILE="/space/home/dev/tmp/estar/gcn_forwarder_output-${DATE_STRING}.txt"
 # Some .sh equivalent stuff of environment in
 # lt_environment.csh
 CLASSPATH="."
