@@ -10,7 +10,8 @@ JAR_FILE	=org_$(ESTAR_NAME)_$(GCN_NAME).jar
 JAVACFLAGS 	= -d $(LIBDIR) -sourcepath ../../../ -classpath $(LIBDIR):$(CLASSPATH)
 DOCSDIR 	= $(ESTAR_DOC_HOME)/javadocs/$(PACKAGEDIR)
 
-SRCS = GCNDatagramListener.java GCNDatagramThread.java GCNDatagramForwarder.java
+SRCS = GCNDatagramListener.java GCNDatagramThread.java GCNDatagramForwarder.java \
+	GCNDatagramAlertData.java GCNDatagramScriptStarterLogger.java GCNDatagramScriptStarter.java
 
 OBJS = $(SRCS:%.java=$(LIBDIR)/$(PACKAGEDIR)/%.class)
 DOCS = $(SRCS:%.java=$(DOCSDIR)/$(PACKAGEDIR)/%.html)
@@ -18,7 +19,9 @@ DOCS = $(SRCS:%.java=$(DOCSDIR)/$(PACKAGEDIR)/%.html)
 CSRCS = socket_demo.c
 CBINS = $(CSRCS:%.c=$(LIBDIR)/$(PACKAGEDIR)/%)
 
-CONFIGS = gcnforwarder gcn gcn_loop_start
+CONFIGS = gcnforwarder gcn.dev gcn_loop_start.dev gcnscriptstarter.dev \
+		gcn.grb gcn_loop_start.grb gcnscriptstarter.grb \
+		gamma_ray_burst_alert
 CONFIGSBIN = $(CONFIGS:%=$(LIBDIR)/%)
 
 DIRS =
