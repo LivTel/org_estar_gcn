@@ -1,5 +1,5 @@
 // GCNDatagramAlertData.java
-// $Header: /home/cjm/cvs/org_estar_gcn/GCNDatagramAlertData.java,v 1.1 2004-10-19 17:10:06 cjm Exp $
+// $Header: /home/cjm/cvs/org_estar_gcn/GCNDatagramAlertData.java,v 1.2 2005-02-17 17:35:57 cjm Exp $
 package org.estar.gcn;
 
 import java.lang.*;
@@ -12,14 +12,14 @@ import org.estar.astrometry.*;
 /**
  * Class holding data to do with a single GCN alert.
  * @author Chris Mottram
- * @version $Revision: 1.1 $
+ * @version $Revision: 1.2 $
  */
 public class GCNDatagramAlertData
 {
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramAlertData.java,v 1.1 2004-10-19 17:10:06 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramAlertData.java,v 1.2 2005-02-17 17:35:57 cjm Exp $";
 	/**
 	 * Alert type.
 	 */
@@ -55,10 +55,10 @@ public class GCNDatagramAlertData
 	 * The declination of the alert in the specified epoch.
 	 */
 	protected Dec dec = null;
-    /**
-     * The epoch of the ra and dec.
-     */
-    protected double epoch = 2000.0;
+	/**
+	 * The epoch of the ra and dec.
+	 */
+	protected double epoch = 2000.0;
 	/**
 	 * The date the GRB was detected.
 	 */
@@ -75,6 +75,11 @@ public class GCNDatagramAlertData
 	 * Error string.
 	 */
 	protected String errorString = null;
+	/**
+	 * Alert status bits. Can be filled with useful information to filter on.
+	 * Currently only used for Swift BAT alerts where it is filled with solnStatus bits to filter on.
+	 */
+	protected int status = 0;
 
 	/**
 	 * Default constructor.
@@ -330,6 +335,28 @@ public class GCNDatagramAlertData
 		errorString = s;
 	}
 
+	/**
+	 * Set status number.
+	 * Currently only used for Swift BAT alerts where it is filled with solnStatus bits to filter on.
+	 * @param s The status number.
+	 * @see #status
+	 */
+	public void setStatus(int s)
+	{
+		status = s;
+	}
+
+	/**
+	 * Get status number.
+	 * Currently only used for Swift BAT alerts where it is filled with solnStatus bits to filter on.
+	 * @return The status number.
+	 * @see #status
+	 */
+	public int getStatus()
+	{
+		return status;
+	}
+
 	public String toString()
 	{
 		return toString("");
@@ -356,6 +383,9 @@ public class GCNDatagramAlertData
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.1  2004/10/19 17:10:06  cjm
+// Initial revision
+//
 // Revision 1.1  2003/05/19 15:47:04  cjm
 // Initial revision
 //
