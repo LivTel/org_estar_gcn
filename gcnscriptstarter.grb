@@ -1,8 +1,10 @@
-#!/sbin/sh
+#!/bin/sh
 #
 # Liverpool John Moores University
+# org.estar.gcn.GCNDatagramScriptStarter startup script.
 #
-#ident	"$Id: gcnscriptstarter.grb,v 1.1 2004-10-19 17:12:27 cjm Exp $"
+# chkconfig: 345 95 5
+#ident	"$Id: gcnscriptstarter.grb,v 1.2 2004-10-19 17:51:03 cjm Exp $"
 GCN_SCRIPT_STARTER_HOME=/grb/bin/tocs_commands
 GCN_SCRIPT_STARTER_PIDFILE=/grb/tmp/gcnscriptstarter.pid
 GCN_SCRIPT_STARTER_OUPTUT_FILE=/grb/tmp/gcn_script_starter_output.txt
