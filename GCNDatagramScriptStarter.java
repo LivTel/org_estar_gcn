@@ -17,8 +17,9 @@ import org.estar.astrometry.*;
  * <pre>
  * -ra  <ra> -dec <dec> -epoch <epoch> -error_box <error_box> -trigger_number <tnum> -sequence_number <snum> -grb_date <date> -notice_date <date>
  * </pre>
+ * Note the &lt;error_box&gt; is the radius in arc-minutes.
  * @author Chris Mottram
- * @version $Revision: 1.1 $
+ * @version $Revision: 1.2 $
  */
 public class GCNDatagramScriptStarter implements Runnable
 {
@@ -26,7 +27,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.1 2004-10-19 17:10:06 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.2 2004-12-14 20:56:32 cjm Exp $";
 	/**
 	 * The default port to listen on, as agreed by Steve.
 	 */
@@ -285,37 +286,42 @@ public class GCNDatagramScriptStarter implements Runnable
 			alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_INTEGRAL);
 			readIntegralOffline();
 			break;
-			case 60: // Note no position
+		    case 60: // Note no position
 			logger.log(" [SWIFT_BAT_GRB_ALERT]");
-			alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_SWIFT);
 			readSwiftBatAlert();
 			break;
 		    case 61:
-			logger.log(" [SWIFT_BAT_GRB_POS_ACK]");
+			logger.log(" [SWIFT_BAT_GRB_POSITION]");
 			alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_SWIFT);
-			readSwiftBatGRBPosAck();
+			readSwiftBatGRBPosition();
 			break;
-			// 62 SWIFT_BAT_GRB_POS_NACK NO position?
-			// 63 SWIFT_BAT_GRB_LC light curve, burst ra/dec same as SWIFT_BAT_POS_ACK
-			// 64 SWIFT_BAT_SCALED_MAP NOT AVAILABLE TO THE PUBLIC
-			// 65 SWIFT_FOM_OBS? What the hell is this?
-			// 66 SWIFT_SC_SLEW
-			// diddly
-			// 67 SWIFT_XRT_POS We should do this. Does it mean ra/dec has BAT posn here?
-			// 68 SWIFT_XRT_SPEC spectrum posn. Why do I want this?
-			// 69 SWIFT_XRT_IMAGE postage-stamp image has brst ra/dec
-			// 70 SWIFT_XRT_LC has bore_ra/dec, don't want this?
-			// 71 SWIFT_XRT_NACK_POS has point ra/dec - not a burst?
-			// 72 SWIFT_UVOT_DBURST has point ra/dec - not a burst?
-			// 73 SWIFT_UVOT_FCHART has point ra/dec - not a burst?
-			// 74 SWIFT_FULL_DATA_INIT has URL for data
-			// 75 SWIFT_FULL_DATA_UPDATE has URL for data update
-			// 76 SWIFT_BAT_GRB_LC_PROCESSED has burst ra/dec - same as  SWIFT_BAT_POS_ACK though.
-			// 77 SWIFT_XRT_SPEC_PROCESSED has bore ra/dec
-			// 78 SWIFT_XRT_IMAGE_PROCESSED has burst ra/dec or does it?
-			// 79 SWIFT_UVOT_DBURST_PROCESSED has burst ra/dec is pointing direction of the s/c 
-			// 80 SWIFT_UVOT_FCHART_PROCESSED has point ra/dec of the pointing direction of the s/c
-			// 81 SWIFT_UVOT_POS has burst ra/dec from BAT (J2000).
+		    case 62: // Note no position
+			logger.log(" [SWIFT_BAT_GRB_NACK_POSITION]");
+			break;
+		    case 65: // Note no (useful) position
+			logger.log(" [SWIFT_FOM_OBS]");
+			break;
+		    case 66: // Note no (useful) position
+			logger.log(" [SWIFT_SC_SLEW]");
+			break;
+		    case 67:
+			logger.log(" [SWIFT_XRT_POSITION]");
+			alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_SWIFT);
+			readSwiftXrtGRBPosition();
+			break;
+		    case 71: // Note no position
+			logger.log(" [SWIFT_XRT_NACK_POSITION]");
+			break;
+		    case 81:
+			logger.log(" [SWIFT_UVOT_POSITION]");
+			alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_SWIFT);
+			readSwiftUvotGRBPosition();
+			break;
+		    case 82:
+			logger.log(" [SWIFT_BAT_GRB_POS_TEST]");
+			//alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_SWIFT);
+			//readSwiftTestGRBPosition();
+			break;
 		    default:
 			logger.log(" [TYPE-"+type+"]");
 		}
@@ -354,6 +360,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * <pre>
 	 * -ra  <ra> -dec <dec> -epoch <epoch> -error_box <error_box> -trigger_number <tnum> -sequence_number <snum> -grb_date <date> -notice_date <date>
 	 * </pre>
+	 * Note the &lt;error_box&gt; is the radius in arc-minutes.
 	 * A script thread is started to monitor the spawned script process.
 	 * @see #script
 	 * @see #alertData
@@ -867,9 +874,9 @@ public class GCNDatagramScriptStarter implements Runnable
 	}
 
 	/**
-	 * Swift BAT position (Type 61,SWIFT_BAT_GRB_POS_ACK).
+	 * Swift BAT position (Type 61,SWIFT_BAT_GRB_POSITION).
 	 */
-	public void readSwiftBatGRBPosAck()
+	public void readSwiftBatGRBPosition()
 	{
 		RA ra = null;
 		Dec dec = null;
@@ -907,10 +914,10 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("Epoch: "+2000.0);
 			int burstFlue = inputStream.readInt(); // 9 Burst flue (counts) number of events.
 			int burstIPeak = inputStream.readInt(); // 10 Burst ipeak (counts*ff) counts.
-			int burstError = inputStream.readInt(); // 11 Burst error in centi-degrees.
-			// burst error is radius of circle in centi-degrees containing TBD% of bursts!
-			// Initially, hardwired to 4 arcmin.
-			alertData.setErrorBoxSize((((double)burstError)*60.0)/100.0);// in arc-min
+			int burstError = inputStream.readInt(); // 11 Burst error degrees (0..180) * 10000)
+			// burst error is radius of circle in degrees*10000 containing TBD% of bursts!
+			// Initially, hardwired to 4 arcmin (0.067 deg) radius.
+			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
 			readStuff(12, 17);// Phi, theta, integ_time, spare x 2
 			int solnStatus = inputStream.readInt(); // 18 Type of source found (bitfield)
 			if((solnStatus & (1<<0))>0)
@@ -932,9 +939,118 @@ public class GCNDatagramScriptStarter implements Runnable
 		}
 		catch  (Exception e)
 		{
-			logger.error("SWIFT BAT GRB POS ACK: Error reading: ",e);
+			logger.error("SWIFT BAT GRB POSITION: Error reading: ",e);
 		}
 	}
+
+	/**
+	 * Swift XRT position (Type 67,SWIFT_GRB_XRT_POSITION).
+	 */
+	public void readSwiftXrtGRBPosition()
+	{
+		RA ra = null;
+		Dec dec = null;
+		Date burstDate = null;
+
+		try
+		{
+			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
+			readSod(); // 3
+			int tsn = inputStream.readInt();   // 4 - trig_seq_num
+			int trigNum = (tsn & 0x0000FFFF);
+			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
+			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
+			alertData.setTriggerNumber(trigNum);
+			alertData.setSequenceNumber(mesgNum);
+			//TJD=12640 is 01 Jan 2003
+			int burstTjd = inputStream.readInt(); // 5 Burst TJD.
+			int burstSod = inputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
+			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
+			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
+			logger.log("Burst Date: "+burstDate);
+			alertData.setGRBDate(burstDate);
+			int bra    = inputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = inputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			ra = new RA();
+			dec = new Dec();
+			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
+			dec.fromRadians(Math.toRadians(((double)bdec)/10000.0));
+			// The BAT returns J2000 coordinates.
+			alertData.setRA(ra);
+			alertData.setDec(dec);
+			alertData.setEpoch(2000.0);
+			logger.log("Burst RA: "+ra);
+			logger.log("Burst Dec: "+dec);
+			logger.log("Epoch: "+2000.0);
+			int burstFlux = inputStream.readInt(); // 9 Burst flux (counts) number of events.
+			readStuff(10, 10); // 10 spare.
+			int burstError = inputStream.readInt(); // 11 Burst error degrees (0..180) * 10000.
+			// burst error is radius of circle in degrees*10000 containing 90% of bursts.
+			// Initially, hardwired to 9".
+			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
+			readStuff(12, 38);// X_TAM, Amp_Wave, misc, det_sig plus lots of spares.
+			readTerm(); // 39 - TERM.
+		}
+		catch  (Exception e)
+		{
+			logger.error("SWIFT XRT GRB POS: Error reading: ",e);
+		}
+	}
+
+	/**
+	 * Swift XRT position (Type 81,SWIFT_UVOT_POSITION).
+	 */
+	public void readSwiftUvotGRBPosition()
+	{
+		RA ra = null;
+		Dec dec = null;
+		Date burstDate = null;
+
+		try
+		{
+			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
+			readSod(); // 3
+			int tsn = inputStream.readInt();   // 4 - trig_obs_num
+			int trigNum = (tsn & 0x0000FFFF);
+			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
+			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
+			alertData.setTriggerNumber(trigNum);
+			alertData.setSequenceNumber(mesgNum);
+			//TJD=12640 is 01 Jan 2003
+			int burstTjd = inputStream.readInt(); // 5 Burst TJD.
+			int burstSod = inputStream.readInt(); // 6 Burst SOD. (centi-seconds in the day)
+			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
+			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
+			logger.log("Burst Date: "+burstDate);
+			alertData.setGRBDate(burstDate);
+			int bra    = inputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = inputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			ra = new RA();
+			dec = new Dec();
+			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
+			dec.fromRadians(Math.toRadians(((double)bdec)/10000.0));
+			// The UVOT returns J2000 coordinates.
+			alertData.setRA(ra);
+			alertData.setDec(dec);
+			alertData.setEpoch(2000.0);
+			logger.log("Burst RA: "+ra);
+			logger.log("Burst Dec: "+dec);
+			logger.log("Epoch: "+2000.0);
+			int burstMag = inputStream.readInt(); // 9 Uvot mag * 100
+			readStuff(10, 10); // 10 filter integer.
+			int burstError = inputStream.readInt(); // 11 Burst error in centi-degrees (0..180.0)*10000.
+			// burst error is radius of circle in degrees*10000 containing 90% of bursts.
+			// Initially, hardwired to 9".
+			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
+			readStuff(12, 38);// misc plus lots of spares.
+			readTerm(); // 39 - TERM.
+		}
+		catch  (Exception e)
+		{
+			logger.error("SWIFT UVOT GRB POS: Error reading: ",e);
+		}
+	}
+
 
 	/**
 	 * Return a Java Date for the specified input fields.
@@ -1125,7 +1241,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		System.out.println("-hete specifies to call the script for HETE alerts.");
 		System.out.println("-integral specifies to call the script for INTEGRAL alerts.");
 		System.out.println("-swift specifies to call the script for SWIFT alerts.");
-		System.out.println("-max_error_box means only call the script when the error box is less than that size.");
+		System.out.println("-max_error_box means only call the script when the error box (radius) is less than that size.");
 	}
 
 	// static main
@@ -1290,4 +1406,7 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.1  2004/10/19 17:10:06  cjm
+// Initial revision
+//
 //
