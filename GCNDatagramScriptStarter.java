@@ -22,7 +22,7 @@ import org.estar.astrometry.*;
  * The server also supports a command socket, which can be used to configure the GCN Datagram Script Starter.
  * For details of the command socket command set see doControlCommand.
  * @author Chris Mottram
- * @version $Revision: 1.20 $
+ * @version $Revision: 1.21 $
  * @see #doControlCommand
  */
 public class GCNDatagramScriptStarter implements Runnable
@@ -31,7 +31,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.20 2005-03-02 12:49:19 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.21 2005-03-07 10:49:44 cjm Exp $";
 	/**
 	 * The default multicast port to listen on, as agreed by Steve.
 	 */
@@ -1430,7 +1430,13 @@ public class GCNDatagramScriptStarter implements Runnable
 				logger.log("Soln Status : It is an X-ray burster (automated ground assignment).");
 			if((solnStatus & (1<<10))>0)
 				logger.log("Soln Status : It is an AGN source.");
-			readStuff(19, 38);// note replace this with more parsing later
+			int misc = packetInputStream.readInt(); // 19 Misc (bitfield)
+			logger.log("Misc Bits : 0x"+Integer.toHexString(misc));
+			int imageSignif = packetInputStream.readInt(); // 20 Image Significance (sig2noise *100)
+			logger.log("Image Significance (SN sigma) : "+(((double)imageSignif)/100.0));
+			int rateSignif = packetInputStream.readInt(); // 21 Rate Significance (sig2noise *100)
+			logger.log("Rate Significance (SN sigma) : "+(((double)rateSignif)/100.0));
+			readStuff(22, 38);// note replace this with more parsing later
 			readTerm(); // 39 - TERM.
 		}
 		catch  (Exception e)
@@ -2714,6 +2720,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.20  2005/03/02 12:49:19  cjm
+// Added comment.
+//
 // Revision 1.19  2005/03/01 19:00:44  cjm
 // Comment fixes.
 //
