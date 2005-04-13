@@ -11,7 +11,8 @@ JAVACFLAGS 	= -d $(LIBDIR) -sourcepath ../../../ -classpath $(LIBDIR):$(CLASSPAT
 DOCSDIR 	= $(ESTAR_DOC_HOME)/javadocs/$(PACKAGEDIR)
 
 SRCS = GCNDatagramListener.java GCNDatagramThread.java GCNDatagramForwarder.java \
-	GCNDatagramAlertData.java GCNDatagramScriptStarterLogger.java GCNDatagramScriptStarter.java
+	GCNDatagramAlertData.java GCNDatagramScriptStarterLogger.java GCNDatagramScriptStarter.java \
+	GCNSwiftClient.java
 
 OBJS = $(SRCS:%.java=$(LIBDIR)/$(PACKAGEDIR)/%.class)
 DOCS = $(SRCS:%.java=$(DOCSDIR)/$(PACKAGEDIR)/%.html)
