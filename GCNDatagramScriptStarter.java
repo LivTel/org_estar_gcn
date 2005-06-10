@@ -22,7 +22,7 @@ import org.estar.astrometry.*;
  * The server also supports a command socket, which can be used to configure the GCN Datagram Script Starter.
  * For details of the command socket command set see doControlCommand.
  * @author Chris Mottram
- * @version $Revision: 1.22 $
+ * @version $Revision: 1.23 $
  * @see #doControlCommand
  */
 public class GCNDatagramScriptStarter implements Runnable
@@ -31,7 +31,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.22 2005-05-03 12:48:36 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.23 2005-06-10 13:54:46 cjm Exp $";
 	/**
 	 * The default multicast port to listen on, as agreed by Steve.
 	 */
@@ -2354,7 +2354,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		// create logger, so gdss will log to file.
 		try
 		{
-			dateFormat = new SimpleDateFormat("yyyy-MM-dd");
+			dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
 			gdss.logger = new GCNDatagramScriptStarterLogger(gdss.getClass().getName()+"-log-"+
 								  dateFormat.format(new Date())+".txt");
@@ -2722,6 +2722,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.22  2005/05/03 12:48:36  cjm
+// Added new solution status bit 9 (Swift BAT).
+//
 // Revision 1.21  2005/03/07 10:49:44  cjm
 // Added misc, image and rate significance logging to SWIFT BAT.
 //
