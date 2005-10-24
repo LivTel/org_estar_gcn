@@ -22,7 +22,7 @@ import org.estar.astrometry.*;
  * The server also supports a command socket, which can be used to configure the GCN Datagram Script Starter.
  * For details of the command socket command set see doControlCommand.
  * @author Chris Mottram
- * @version $Revision: 1.23 $
+ * @version $Revision: 1.24 $
  * @see #doControlCommand
  */
 public class GCNDatagramScriptStarter implements Runnable
@@ -31,7 +31,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.23 2005-06-10 13:54:46 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.24 2005-10-24 14:09:39 cjm Exp $";
 	/**
 	 * The default multicast port to listen on, as agreed by Steve.
 	 */
@@ -863,7 +863,12 @@ public class GCNDatagramScriptStarter implements Runnable
 			// sxDimSig contains the maximum dimension of the SXC error box [units arcsec] in top 16 bits
 			int sxErrorBoxArcsec = (sxDimSig&0xFFFF0000)>>16;
 			logger.log("SXC error box (diameter,arcsec) : "+sxErrorBoxArcsec+".");
-			alertData.setErrorBoxSize(((double)(Math.max(wxErrorBoxArcsec,sxErrorBoxArcsec)))/
+			// Take smallest of both error boxes (was largest until 2005/10/24)
+			if((wxErrorBoxArcsec > 0.0)&&(sxErrorBoxArcsec > 0.0))
+				alertData.setErrorBoxSize(((double)(Math.min(wxErrorBoxArcsec,sxErrorBoxArcsec)))/
+						  (2.0*60.0));// radius, in arc-min
+			else // one must be zero, therefore take largest (i.e. smallest non-zero!)
+				alertData.setErrorBoxSize(((double)(Math.max(wxErrorBoxArcsec,sxErrorBoxArcsec)))/
 						  (2.0*60.0));// radius, in arc-min
 			int posFlags = packetInputStream.readInt(); // 36 - pos_flags
 			logger.log("Pos Flags: 0x"+Integer.toHexString(posFlags));
@@ -998,7 +1003,12 @@ public class GCNDatagramScriptStarter implements Runnable
 			// sxDimSig contains the maximum dimension of the SXC error box [units arcsec] in top 16 bits
 			int sxErrorBoxArcsec = (sxDimSig&0xFFFF0000)>>16;
 			logger.log("SXC error box (diameter,arcsec) : "+sxErrorBoxArcsec+".");
-			alertData.setErrorBoxSize(((double)(Math.max(wxErrorBoxArcsec,sxErrorBoxArcsec)))/
+			// Take smallest of both error boxes (was largest until 2005/10/24)
+			if((wxErrorBoxArcsec > 0.0)&&(sxErrorBoxArcsec > 0.0))
+				alertData.setErrorBoxSize(((double)(Math.min(wxErrorBoxArcsec,sxErrorBoxArcsec)))/
+						  (2.0*60.0));// radius, in arc-min
+			else // one must be zero, therefore take largest (i.e. smallest non-zero!)
+				alertData.setErrorBoxSize(((double)(Math.max(wxErrorBoxArcsec,sxErrorBoxArcsec)))/
 						  (2.0*60.0));// radius, in arc-min
 			int posFlags = packetInputStream.readInt(); // 36 - pos_flags
 			logger.log("Pos Flags: 0x"+Integer.toHexString(posFlags));
@@ -2722,6 +2732,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.23  2005/06/10 13:54:46  cjm
+// Changed logger filename format to include time of day.
+//
 // Revision 1.22  2005/05/03 12:48:36  cjm
 // Added new solution status bit 9 (Swift BAT).
 //
