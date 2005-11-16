@@ -22,7 +22,7 @@ import org.estar.astrometry.*;
  * The server also supports a command socket, which can be used to configure the GCN Datagram Script Starter.
  * For details of the command socket command set see doControlCommand.
  * @author Chris Mottram
- * @version $Revision: 1.24 $
+ * @version $Revision: 1.25 $
  * @see #doControlCommand
  */
 public class GCNDatagramScriptStarter implements Runnable
@@ -31,7 +31,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.24 2005-10-24 14:09:39 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.25 2005-11-16 12:11:26 cjm Exp $";
 	/**
 	 * The default multicast port to listen on, as agreed by Steve.
 	 */
@@ -563,12 +563,15 @@ public class GCNDatagramScriptStarter implements Runnable
 	{
 		Runtime rt = null;
 		DateFormat dateFormat = null;
+		TimeZone timeZone = null;
 		StringBuffer execString = null;
 		ScriptThread scriptThread = null;
 		Thread thread = null;
 		Process process = null;
 
 		dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+		timeZone = TimeZone.getTimeZone("GMT+0");
+		dateFormat.setTimeZone(timeZone);
 		rt = Runtime.getRuntime();
 		execString = new StringBuffer();
 		execString.append(script+" -"+alertData.getAlertTypeString()+
@@ -1611,12 +1614,15 @@ public class GCNDatagramScriptStarter implements Runnable
 	protected Date truncatedJulianDateSecondOfDayToDate(int tjd,int sod) throws ParseException
 	{
 		DateFormat dateFormat = null;
+		TimeZone timeZone = null;
 		Date date = null;
 		int tjdFrom2003;
 		long millis;
 
 		dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
-		// set tjdStartDate to 1st Jan 2003 (TJD 12640)
+		timeZone = TimeZone.getTimeZone("GMT+0");
+		dateFormat.setTimeZone(timeZone);
+		// set tjdStartDate to 1st Jan 2003 (TJD 12640) GMT
 		date = dateFormat.parse("2003-01-01T00:00:00");
 		// get number of days from 1st Jan 2003 for tjd
 		tjdFrom2003 = tjd-12640;
@@ -1624,7 +1630,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		millis = ((long)tjdFrom2003)*86400000L; // 60*60*24*1000 = 86400000;
 		// get number of millis from 1st Jan 1970 (Date EPOCH) for tjd
 		millis = millis+date.getTime();
-		// add sod to millis to get date millis from 1st Jan 1970
+		// add sod to millis to get date millis from 1st Jan 1970 GMT
 		// Note sod is in centoseconds
 		millis = millis+(((long)sod)*10L);
 		// set date time to this number of millis
@@ -1816,11 +1822,14 @@ public class GCNDatagramScriptStarter implements Runnable
 	protected String doGammaRayBurstAlertControlCommand(String args[]) throws Exception
 	{
 		SimpleDateFormat dateFormat = null;
+		TimeZone timeZone = null;
 		Date date = null;
 		int intValue;
 		double doubleValue;
 
 		dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+		timeZone = TimeZone.getTimeZone("GMT+0");
+		dateFormat.setTimeZone(timeZone);
 		// acquire lock on alert data
 		synchronized(alertDataLock)
 		{
@@ -2364,6 +2373,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		// create logger, so gdss will log to file.
 		try
 		{
+			// locate date logger at the present time
 			dateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 
 			gdss.logger = new GCNDatagramScriptStarterLogger(gdss.getClass().getName()+"-log-"+
@@ -2732,6 +2742,10 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.24  2005/10/24 14:09:39  cjm
+// Changed setting of error box size for HETE SXC and WXM error boxs.
+// Used to take largest, now takes smallest non-zero.
+//
 // Revision 1.23  2005/06/10 13:54:46  cjm
 // Changed logger filename format to include time of day.
 //
