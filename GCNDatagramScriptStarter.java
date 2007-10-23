@@ -22,7 +22,7 @@ import org.estar.astrometry.*;
  * The server also supports a command socket, which can be used to configure the GCN Datagram Script Starter.
  * For details of the command socket command set see doControlCommand.
  * @author Chris Mottram
- * @version $Revision: 1.25 $
+ * @version $Revision: 1.26 $
  * @see #doControlCommand
  */
 public class GCNDatagramScriptStarter implements Runnable
@@ -31,7 +31,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.25 2005-11-16 12:11:26 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.26 2007-10-23 12:48:09 cjm Exp $";
 	/**
 	 * The default multicast port to listen on, as agreed by Steve.
 	 */
@@ -1441,17 +1441,81 @@ public class GCNDatagramScriptStarter implements Runnable
 				logger.log("Soln Status : It is a ground catalogue source.");
 			if((solnStatus & (1<<9))>0)
 				logger.log("Soln Status : It is probably not a GRB (negative background slope).");
-			//if((solnStatus & (1<<10))>0)
-			//	logger.log("Soln Status : It is an X-ray burster (automated ground assignment).");
-			//if((solnStatus & (1<<11))>0)
-			//	logger.log("Soln Status : It is an AGN source.");
+			if((solnStatus & (1<<10))>0)
+				logger.log("Soln Status : StarTracker not locked (ground assignment).");
+			if((solnStatus & (1<<11))>0)
+				logger.log("Soln Status : Very low image significance (less than 6.5 sigma).");
+			if((solnStatus & (1<<12))>0)
+				logger.log("Soln Status : It is in the catalog of sources to be blocked.");
+			if((solnStatus & (1<<13))>0)
+				logger.log("Soln Status : There is a nearby bright star.");
 			int misc = packetInputStream.readInt(); // 19 Misc (bitfield)
 			logger.log("Misc Bits : 0x"+Integer.toHexString(misc));
 			int imageSignif = packetInputStream.readInt(); // 20 Image Significance (sig2noise *100)
 			logger.log("Image Significance (SN sigma) : "+(((double)imageSignif)/100.0));
 			int rateSignif = packetInputStream.readInt(); // 21 Rate Significance (sig2noise *100)
 			logger.log("Rate Significance (SN sigma) : "+(((double)rateSignif)/100.0));
-			readStuff(22, 38);// note replace this with more parsing later
+			readStuff(22, 35);// note replace this with more parsing later
+			int meritWord0 = packetInputStream.readInt(); // 36 Merit params 0,1,2,3 (-127 to +127)
+			int meritWord1 = packetInputStream.readInt(); // 37 Merit params 4,5,6,7 (-127 to +127)
+			int meritWord2 = packetInputStream.readInt(); // 38 Merit params 8,9     (-127 to +127)
+			logger.log("Merit words : 0 = 0x"+Integer.toHexString(meritWord0)+
+				   " 1 = 0x"+Integer.toHexString(meritWord1)+
+				   " 2 = 0x"+Integer.toHexString(meritWord2));
+			int meritParameterList[] = new int[10];
+			byte sbyte;
+			// 0 Flag bit indicating GRB or not (1 or 0, resp).
+			sbyte = (byte)(meritWord0 & 0xFF);
+			meritParameterList[0] = (int)sbyte;
+			logger.log("Merit parameter : 0 = "+meritParameterList[0]);
+			if(meritParameterList[0] == 1)
+				logger.log("Merit parameter : 0 suggests IS a GRB.");
+			else if(meritParameterList[0] == 0)
+				logger.log("Merit parameter : 0 suggests NOT a GRB.");
+			else
+				logger.log("Merit parameter : 0 : Failed to decode into a valid flag.");
+			// 1 Flag bit indicating Transient or not (1 or 0, resp); unknown src with T_trig>64sec.
+			sbyte = (byte)((meritWord0 & 0xFF00) >> 8);
+			meritParameterList[1] = (int)sbyte;
+			logger.log("Merit parameter : 1 = "+meritParameterList[1]);
+			if(meritParameterList[1] == 1)
+				logger.log("Merit parameter : 1 suggests IS a transient source with T_trig > 64s.");
+			else if(meritParameterList[1] == 0)
+				logger.log("Merit parameter : 1 suggests is NOT a transient source with T_trig > 64s.");
+			else
+				logger.log("Merit parameter : 1 : Failed to decode into a valid flag.");
+			// 2 Merit value assigned to the Known_src from the on-board catalog, else 0 if not in catalog.
+			sbyte = (byte)((meritWord0 & 0xFF0000) >> 16);
+			meritParameterList[2] = (int)sbyte;
+			logger.log("Merit parameter : 2 = "+meritParameterList[2]);
+			// 3 Trigger duration (log2(t_trig/1024msec)).
+			sbyte = (byte)((meritWord0 & 0xFF000000) >> 24);
+			meritParameterList[3] = (int)sbyte;
+			logger.log("Merit parameter : 3 = "+meritParameterList[3]);
+			// 4 Trigger energy range (0=15-25,1=15-50,2=25-100,3=50-350).
+			sbyte = (byte)(meritWord1 & 0xFF);
+			meritParameterList[4] = (int)sbyte;
+			logger.log("Merit parameter : 4 = "+meritParameterList[4]);
+			// 5 Image significance
+			sbyte = (byte)((meritWord1 & 0xFF00) >> 8);
+			meritParameterList[5] = (int)sbyte;
+			logger.log("Merit parameter : 5 = "+meritParameterList[5]);
+			// 6 Is it observable (-1 if w/in 30deg of Moon; -5, 20deg Moon; -100, 45deg Sun).
+			sbyte = (byte)((meritWord1 & 0xFF0000) >> 16);
+			meritParameterList[6] = (int)sbyte;
+			logger.log("Merit parameter : 6 = "+meritParameterList[6]);
+			// 7 Flag bit indicating in a confused of obscur region (ie Gal Center or Plane).
+			sbyte = (byte)((meritWord1 & 0xFF000000) >> 24);
+			meritParameterList[7] = (int)sbyte;
+			logger.log("Merit parameter : 7 = "+meritParameterList[7]);
+			// 8 Sun distance (-100*cos(sun_angular_dist)).
+			sbyte = (byte)(meritWord2 & 0xFF);
+			meritParameterList[8] = (int)sbyte;
+			logger.log("Merit parameter : 8 = "+meritParameterList[8]);
+			// 9 An offset param to bias for/against PPTs & TOOs wrt ATs (norm param).
+			sbyte = (byte)((meritWord2 & 0xFF00) >> 8);
+			meritParameterList[9] = (int)sbyte;
+			logger.log("Merit parameter : 9 = "+meritParameterList[9]);
 			readTerm(); // 39 - TERM.
 		}
 		catch  (Exception e)
@@ -1510,19 +1574,85 @@ public class GCNDatagramScriptStarter implements Runnable
 			logger.log("Burst Dec: "+dec);
 			logger.log("Epoch: "+2000.0);
 			int burstFlux = packetInputStream.readInt(); // 9 Burst flux (counts) number of events.
+			logger.log("Burst Flux: "+(((double)burstFlux)/100.0));
 			readStuff(10, 10); // 10 spare.
 			int burstError = packetInputStream.readInt(); // 11 Burst error degrees (0..180) * 10000.
 			// burst error is radius of circle in degrees*10000 containing 90% of bursts.
 			// Initially, hardwired to 9".
 			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
 			logger.log("Error Box Radius (arcmin): "+((((double)burstError)*60.0)/10000.0));
+			readStuff(12, 16);// X_TAM, spare
+			int ampWave = packetInputStream.readInt(); // 17 Amp_Wave (dual_int) AmpNum*256 + WaveformNum
+			int triggerId = packetInputStream.readInt(); // 18 The type of event
+			logger.log("Trigger Id: 0x"+Integer.toHexString(triggerId));
+			int misc = packetInputStream.readInt(); // 19 misc bits
+			logger.log("Misc Bits : 0x"+Integer.toHexString(misc));
+			if((misc & (1<<0))>0)
+				logger.log("Misc : This is probably a cosmic ray.");
+			if((misc & (1<<5))>0)
+				logger.log("Misc : It is definitely not a GRB (a Retraction).");
+			if((misc & (1<<8))>0)
+				logger.log("Misc : It is in the BAT ground catalog.");
+			if((misc & (1<<30))>0)
+				logger.log("Misc : This is a test submission (internal use only).");
 			// alertFilter checks SWIFT alerts to ensure the status (Swift BAT solnStatus (word 18))
-			// has the correct bits set. XRT alerts don't have solnStatus bits, but we must set
+			// has the correct bits set. 
+			// XRT alerts don't have solnStatus bits. 
+			// XRT alerts don't have solnStatus bits, but we must set
 			// the status bits to fool alertFilter. We set to swiftSolnStatusAcceptMask to should
 			// always pass the test, assuming a bit in swiftSolnStatusAcceptMask is NOT also in
 			// swiftSolnStatusRejectMask, which would be stupid (no Swift alerts would be propogated).
-			alertData.setStatus(swiftSolnStatusAcceptMask); // set alert data status bits to solnStatus
-			readStuff(12, 38);// X_TAM, Amp_Wave, misc, det_sig plus lots of spares.
+			// However, according to Evert Rol (see email 18/06/2007) they _do_ have solnStatus,
+			// use the misc word (index 19) instead. However, these bits are _not_ the same as a real
+			// BAT solnStatus status, so we will have to translate between the two!
+			int solnStatus = swiftSolnStatusAcceptMask;
+			// if((misc & (1<<0))>0) are cosmic rays , but no TYPE=61 solnStatus equivalent bit
+			// definately not a GRB (retraction)
+			if((misc & (1<<5))>0)
+				solnStatus |= (1<<5);
+			// BAT ground catalogue source
+			if((misc & (1<<8))>0)
+				solnStatus |= (1<<8);
+			// test submission
+			if((misc & (1<<30))>0)
+				solnStatus |= (1<<30);
+			logger.log("Soln Status (set from accept mask/misc bits) : 0x"+
+				   Integer.toHexString(solnStatus));
+			alertData.setStatus(solnStatus); // set alert data status bits to solnStatus
+			if((solnStatus & (1<<0))>0)
+				logger.log("Fake Soln Status : A point source was found.");
+			if((solnStatus & (1<<1))>0)
+				logger.log("Fake Soln Status : It is a GRB.");
+			if((solnStatus & (1<<2))>0)
+				logger.log("Fake Soln Status : It is an interesting source.");
+			if((solnStatus & (1<<3))>0)
+				logger.log("Fake Soln Status : It is a flight catalogue source.");
+			if((solnStatus & (1<<4))>0)
+				logger.log("Fake Soln Status : It is an image trigger.");
+			else
+				logger.log("Fake Soln Status : It is a rate trigger.");
+			if((solnStatus & (1<<5))>0)
+				logger.log("Fake Soln Status : It is defintely not a GRB (ground-processing assigned).");
+			if((solnStatus & (1<<6))>0)
+				logger.log("Fake Soln Status : It is probably not a GRB (high background level).");
+			if((solnStatus & (1<<7))>0)
+				logger.log("Fake Soln Status : It is probably not a GRB (low image significance).");
+			if((solnStatus & (1<<8))>0)
+				logger.log("Fake Soln Status : It is a ground catalogue source.");
+			if((solnStatus & (1<<9))>0)
+				logger.log("Fake Soln Status : It is probably not a GRB (negative background slope).");
+			if((solnStatus & (1<<10))>0)
+				logger.log("Fake Soln Status : StarTracker not locked (ground assignment).");
+			if((solnStatus & (1<<11))>0)
+				logger.log("Fake Soln Status : Very low image significance (less than 6.5 sigma).");
+			if((solnStatus & (1<<12))>0)
+				logger.log("Fake Soln Status : It is in the catalog of sources to be blocked.");
+			if((solnStatus & (1<<13))>0)
+				logger.log("Fake Soln Status : There is a nearby bright star.");
+			readStuff(20, 20);// Spare.
+			int detSignif = packetInputStream.readInt(); // 21 Detector significance
+			logger.log("Detector Significance (sigma): "+(((double)detSignif)/100.0));
+			readStuff(22, 38);// lots of spares.
 			readTerm(); // 39 - TERM.
 		}
 		catch  (Exception e)
@@ -2742,6 +2872,9 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.25  2005/11/16 12:11:26  cjm
+// Fixed burst date and notice date parsing/formatting. Now all done in GMT+0.
+//
 // Revision 1.24  2005/10/24 14:09:39  cjm
 // Changed setting of error box size for HETE SXC and WXM error boxs.
 // Used to take largest, now takes smallest non-zero.
