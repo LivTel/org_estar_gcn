@@ -1,5 +1,5 @@
 // GCNDatagramAlertData.java
-// $Header: /home/cjm/cvs/org_estar_gcn/GCNDatagramAlertData.java,v 1.3 2005-03-01 18:51:07 cjm Exp $
+// $Header: /home/cjm/cvs/org_estar_gcn/GCNDatagramAlertData.java,v 1.4 2008-03-17 19:20:43 cjm Exp $
 package org.estar.gcn;
 
 import java.lang.*;
@@ -12,14 +12,14 @@ import org.estar.astrometry.*;
 /**
  * Class holding data to do with a single GCN alert.
  * @author Chris Mottram
- * @version $Revision: 1.3 $
+ * @version $Revision: 1.4 $
  */
 public class GCNDatagramAlertData
 {
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramAlertData.java,v 1.3 2005-03-01 18:51:07 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramAlertData.java,v 1.4 2008-03-17 19:20:43 cjm Exp $";
 	/**
 	 * Alert type.
 	 */
@@ -84,6 +84,12 @@ public class GCNDatagramAlertData
 	 * Whether this alert is a real alert (false), or one generated for testing purposes (true).
 	 */
 	protected boolean test = false;
+	/**
+	 * Swift packets only, extra filtering can be done on the BAT merit parameters.
+	 * For swift BAT alerts, hasMerit is true means the merit parameters indicate the burst IS a GRB.
+	 * Only valid for Swift BAT alerts.
+	 */
+	protected boolean hasMerit = true;
 
 	/**
 	 * Default constructor.
@@ -381,6 +387,28 @@ public class GCNDatagramAlertData
 		return test;
 	}
 
+	/**
+	 * Set whether this alert has merit or not.
+	 * Only valid for Swift BAT alerts.
+	 * @param b Should be false if this is not a GRB, true if it is a GRB.
+	 * @see #hasMerit
+	 */
+	public void setHasMerit(boolean b)
+	{
+		hasMerit = b;
+	}
+
+	/**
+	 * Get whether this alert has merit.
+	 * Only valid for Swift BAT alerts.
+	 * @return true is this is a real GRB, false if it is not.
+	 * @see #hasMerit
+	 */
+	public boolean getHasMerit()
+	{
+		return hasMerit;
+	}
+
 	public String toString()
 	{
 		return toString("");
@@ -407,6 +435,9 @@ public class GCNDatagramAlertData
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.3  2005/03/01 18:51:07  cjm
+// Added test boolean.
+//
 // Revision 1.2  2005/02/17 17:35:57  cjm
 // Added status variable.
 //
