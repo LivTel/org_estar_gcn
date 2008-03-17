@@ -22,7 +22,7 @@ import org.estar.astrometry.*;
  * The server also supports a command socket, which can be used to configure the GCN Datagram Script Starter.
  * For details of the command socket command set see doControlCommand.
  * @author Chris Mottram
- * @version $Revision: 1.26 $
+ * @version $Revision: 1.27 $
  * @see #doControlCommand
  */
 public class GCNDatagramScriptStarter implements Runnable
@@ -31,7 +31,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.26 2007-10-23 12:48:09 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.27 2008-03-17 19:27:14 cjm Exp $";
 	/**
 	 * The default multicast port to listen on, as agreed by Steve.
 	 */
@@ -113,6 +113,10 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * to trigger a script firing.
 	 */
 	protected int swiftSolnStatusAcceptMask = 0;
+	/**
+	 * Whether to filter Swift alerts on any merit data that may be in the packet.
+	 */
+	protected boolean swiftFilterOnMerit = false;
 	/**
 	 * The port to run the control port on.
 	 * @see #DEFAULT_CONTROL_PORT
@@ -474,6 +478,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see #allowedAlerts
 	 * @see #maxErrorBox
 	 * @see #enableSocketAlerts
+	 * @see #swiftFilterOnMerit
 	 */
 	protected boolean alertFilter()
 	{
@@ -544,6 +549,16 @@ public class GCNDatagramScriptStarter implements Runnable
 					return false;
 				}
 			}// end if swift solnStatus bitmasks are not stupid
+			// See if the packet should be filtered on the merit parameters
+			if(swiftFilterOnMerit)
+			{
+				if(alertData.getHasMerit() == false)
+				{
+					logger.log("alertFilter stopped propogation of the alert: "+
+						   "hasMerit was false.");
+					return false;
+				}
+			}
 		}// end if swift
 		return true;
 	}
@@ -1456,6 +1471,8 @@ public class GCNDatagramScriptStarter implements Runnable
 			int rateSignif = packetInputStream.readInt(); // 21 Rate Significance (sig2noise *100)
 			logger.log("Rate Significance (SN sigma) : "+(((double)rateSignif)/100.0));
 			readStuff(22, 35);// note replace this with more parsing later
+			// Merit Parameters
+			alertData.setHasMerit(true);
 			int meritWord0 = packetInputStream.readInt(); // 36 Merit params 0,1,2,3 (-127 to +127)
 			int meritWord1 = packetInputStream.readInt(); // 37 Merit params 4,5,6,7 (-127 to +127)
 			int meritWord2 = packetInputStream.readInt(); // 38 Merit params 8,9     (-127 to +127)
@@ -1469,9 +1486,14 @@ public class GCNDatagramScriptStarter implements Runnable
 			meritParameterList[0] = (int)sbyte;
 			logger.log("Merit parameter : 0 = "+meritParameterList[0]);
 			if(meritParameterList[0] == 1)
+			{
 				logger.log("Merit parameter : 0 suggests IS a GRB.");
+			}
 			else if(meritParameterList[0] == 0)
+			{
+				alertData.setHasMerit(false);
 				logger.log("Merit parameter : 0 suggests NOT a GRB.");
+			}
 			else
 				logger.log("Merit parameter : 0 : Failed to decode into a valid flag.");
 			// 1 Flag bit indicating Transient or not (1 or 0, resp); unknown src with T_trig>64sec.
@@ -1479,9 +1501,14 @@ public class GCNDatagramScriptStarter implements Runnable
 			meritParameterList[1] = (int)sbyte;
 			logger.log("Merit parameter : 1 = "+meritParameterList[1]);
 			if(meritParameterList[1] == 1)
+			{
+				alertData.setHasMerit(false);
 				logger.log("Merit parameter : 1 suggests IS a transient source with T_trig > 64s.");
+			}
 			else if(meritParameterList[1] == 0)
+			{
 				logger.log("Merit parameter : 1 suggests is NOT a transient source with T_trig > 64s.");
+			}
 			else
 				logger.log("Merit parameter : 1 : Failed to decode into a valid flag.");
 			// 2 Merit value assigned to the Known_src from the on-board catalog, else 0 if not in catalog.
@@ -1649,6 +1676,9 @@ public class GCNDatagramScriptStarter implements Runnable
 				logger.log("Fake Soln Status : It is in the catalog of sources to be blocked.");
 			if((solnStatus & (1<<13))>0)
 				logger.log("Fake Soln Status : There is a nearby bright star.");
+			// There are no merit parameters for XRT positions.
+			// Pretend the alert has merit (is a GRB).
+			alertData.setHasMerit(true);
 			readStuff(20, 20);// Spare.
 			int detSignif = packetInputStream.readInt(); // 21 Detector significance
 			logger.log("Detector Significance (sigma): "+(((double)detSignif)/100.0));
@@ -1724,6 +1754,9 @@ public class GCNDatagramScriptStarter implements Runnable
 			// always pass the test, assuming a bit in swiftSolnStatusAcceptMask is NOT also in
 			// swiftSolnStatusRejectMask, which would be stupid (no Swift alerts would be propogated).
 			alertData.setStatus(swiftSolnStatusAcceptMask); // set alert data status bits to solnStatus
+			// There are no merit parameters for UVOT positions.
+			// Pretend the alert has merit (is a GRB).
+			alertData.setHasMerit(true);
 			readTerm(); // 39 - TERM.
 		}
 		catch  (Exception e)
@@ -2220,6 +2253,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see #addAllowedAlerts
 	 * @see #swiftSolnStatusRejectMask
 	 * @see #swiftSolnStatusAcceptMask
+	 * @see #swiftFilterOnMerit
 	 * @see #controlServerPort
 	 * @see #enableSocketAlerts
 	 * @see #enableManualAlerts
@@ -2441,6 +2475,10 @@ public class GCNDatagramScriptStarter implements Runnable
 					System.exit(4);
 				}
 			}
+			else if(args[i].equals("-sfom")||args[i].equals("-swift_filter_on_merit"))
+			{
+				swiftFilterOnMerit = true;
+			}
 			else
 			{
 				System.err.println("GCNDatagramScriptStarter: Unknown argument "+args[i]+".");
@@ -2464,7 +2502,8 @@ public class GCNDatagramScriptStarter implements Runnable
 				   "\t[-script <filename>][-all][-hete][-integral][-swift]\n"+
 				   "\t[-max_error_box|-meb <arcsecs>]"+
 				   "\t[-swift_soln_status_accept_mask|-sssam <bit mask>]"+
-				   "\t[-swift_soln_status_reject_mask|-sssrm <bit mask>]");
+				   "\t[-swift_soln_status_reject_mask|-sssrm <bit mask>]"+
+				   "\t[-sfom|-swift_filter_on_merit]");
 		System.out.println("-script specifies the script/program to call on a successful alert.");
 		System.out.println("-all specifies to call the script for all types of alerts.");
 		System.out.println("-control_port specifies the port the control server sits on.");
@@ -2477,6 +2516,7 @@ public class GCNDatagramScriptStarter implements Runnable
 		System.out.println("-sssam sets the Swift solnStatus bits that MUST be present for the script to be started.");
 		System.out.println("-sssrm sets the Swift solnStatus bits that MUST NOT be present for the script to be started.");
 		System.out.println("-sssam and -sssrm can be specified in hexidecimal using the '0x' prefix.");
+		System.out.println("-sfom turns on some extra Swift filtering based on the BAT merit parameters.");
 		System.out.println("The default control port number is "+DEFAULT_CONTROL_PORT+".");
 	}
 
@@ -2872,6 +2912,17 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.26  2007/10/23 12:48:09  cjm
+// More BAT solnStatus bits (logging).
+// Logging of extracted merit parameters.
+//
+// Type 67/XRT
+// burst flux/amp wave/trigger id logging
+// 19 misc bits logging
+// Log cosmic ray misc bit/def not GRB (retraction)/in ground catalog/ test submission
+//
+// Transfer bits 5/8/30 to soln_status preset to accept mask
+//
 // Revision 1.25  2005/11/16 12:11:26  cjm
 // Fixed burst date and notice date parsing/formatting. Now all done in GMT+0.
 //
