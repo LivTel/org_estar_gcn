@@ -6,7 +6,7 @@
 # GCN_Server startup script. This version is for use on proxy machines,
 # the full version is available for deployments in ~dev/src/planetarium/scripts/ 
 # This is designed to be run from the gcn /etc/init.d startup script.
-#ident	"$Id: gcn_loop_start.grb,v 1.6 2005-01-20 16:23:43 cjm Exp $"
+#ident	"$Id: gcn_loop_start.grb,v 1.7 2008-07-25 15:51:30 cjm Exp $"
 setenv GCN_HOME /grb/bin/planetarium/java
 setenv GCN_PIDFILE /grb/tmp/gcn.pid
 set date_string = `date +"%Y-%m-%dT%H:%M:%S"`
@@ -37,7 +37,7 @@ switch ( ${hostname} )
 	breaksw
 endsw
 setenv GCN_SERVER_ARGS "${GCN_SERVER_ARGS} -port ${GCN_PORT_NUMBER}"
-setenv GCN_MAIL_ADDRESSES "cjm@astro.livjm.ac.uk snf@astro.livjm.ac.uk ltops@astro.livjm.ac.uk grb@astro.livjm.ac.uk"
+setenv GCN_MAIL_ADDRESSES "cjm@astro.livjm.ac.uk snf@astro.livjm.ac.uk nrc@astro.livjm.ac.uk ltops@astro.livjm.ac.uk grb@astro.livjm.ac.uk"
 # Some .sh equivalent stuff of environment in
 # lt_environment.csh
 setenv CLASSPATH ".:${GCN_HOME}"
