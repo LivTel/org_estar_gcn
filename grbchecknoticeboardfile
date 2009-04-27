@@ -1,0 +1,51 @@
+#!/bin/bash
+# $Header: /home/cjm/cvs/org_estar_gcn/grbchecknoticeboardfile,v 1.1 2009-04-27 13:57:34 cjm Exp $
+# grbchecknoticeboardfile
+#
+# chkconfig: 345 95 5
+# description: Check if ${NOTICEBOARD_FILE_FILE} exists - it should never exist after a machine reboot
+# If it exists delete it, and email informing someone of the problem.
+# ident $Id: grbchecknoticeboardfile,v 1.1 2009-04-27 13:57:34 cjm Exp $
+#
+if [ -r /grb/bin/tocs_commands/proxy_environment.sh ]; then
+    . /grb/bin/tocs_commands/proxy_environment.sh
+fi
+MAIL_ADDRESSES="cjm@astro.livjm.ac.uk"
+case "$1" in
+start)
+	if [ -r ${NOTICEBOARD_FILE_FILE} ]; then
+       		NOTICEBOARD_FILE=`cat ${NOTICEBOARD_FILE_FILE}`
+		NOTICEBOARD_DATE_STAMP=`/bin/ls -l --time-style="+%Y-%m-%dT%H:%M:%S" ${NOTICEBOARD_FILE_FILE} | /bin/awk ' { print $6 }'`
+		echo "File ${NOTICEBOARD_FILE_FILE} previously created for noticeboard: ${NOTICEBOARD_FILE} on ${NOTICEBOARD_DATE_STAMP}."
+		echo "Deleting ${NOTICEBOARD_FILE_FILE}."
+		#
+		# Delete ${NOTICEBOARD_FILE_FILE}
+		#
+		/bin/rm -f "${NOTICEBOARD_FILE_FILE}"
+		/bin/echo "Deleted file ${NOTICEBOARD_FILE_FILE} previously created for noticeboard: ${NOTICEBOARD_FILE} on ${NOTICEBOARD_DATE_STAMP}." | /bin/mail ${MAIL_ADDRESSES}
+	fi
+	;;
+stop)
+	# Check for existence of NB file but don't delete here
+	if [ -r ${NOTICEBOARD_FILE_FILE} ]; then
+       		NOTICEBOARD_FILE=`cat ${NOTICEBOARD_FILE_FILE}`
+		NOTICEBOARD_DATE_STAMP=`/bin/ls -l --time-style="+%Y-%m-%dT%H:%M:%S" ${NOTICEBOARD_FILE_FILE} | /bin/awk ' { print $6 }'`
+		echo "File ${NOTICEBOARD_FILE_FILE} previously created for noticeboard: ${NOTICEBOARD_FILE} on ${NOTICEBOARD_DATE_STAMP}."
+		/bin/echo "Found file ${NOTICEBOARD_FILE_FILE} previously created for noticeboard: ${NOTICEBOARD_FILE}  on ${NOTICEBOARD_DATE_STAMP} whilst stopping." | /bin/mail ${MAIL_ADDRESSES}
+	fi
+	;;
+*)
+	echo "Usage: $0 {start|stop}"
+	exit 1
+	;;
+esac
+
+if [ $? != 0 ]; then
+	echo "$status"
+	exit 1
+fi
+exit 0
+
+#
+# $Log: not supported by cvs2svn $
+#
