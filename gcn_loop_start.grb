@@ -6,13 +6,15 @@
 # GCN_Server startup script. This version is for use on proxy machines,
 # the full version is available for deployments in ~dev/src/planetarium/scripts/ 
 # This is designed to be run from the gcn /etc/init.d startup script.
-#ident	"$Id: gcn_loop_start.grb,v 1.7 2008-07-25 15:51:30 cjm Exp $"
+#ident	"$Id: gcn_loop_start.grb,v 1.8 2009-06-05 11:21:22 cjm Exp $"
 setenv GCN_HOME /grb/bin/planetarium/java
 setenv GCN_PIDFILE /grb/tmp/gcn.pid
 set date_string = `date +"%Y-%m-%dT%H:%M:%S"`
 setenv GCN_OUPTUT_FILE "/grb/tmp/gcn_output-${date_string}.txt"
 setenv GCN_LOOP_OUPTUT_FILE "/grb/tmp/gcn_loop_output.txt"
 setenv GCN_SERVER_ARGS ""
+setenv DELAY "0"
+setenv DELAY_INCREMENT "60"
 # Configure port number based on machine hostname
 # See: http://gcn.gsfc.nasa.gov/sites_cfg.html , Sites: LT, FTN, FTS
 # Note, probably doesn't work on ltccd1, --short does not work!
@@ -22,6 +24,7 @@ switch ( ${hostname} )
     case "ltccd1":
 	setenv GCN_PORT_NUMBER "5169"
 	breaksw
+    case "mdt-test":
     case "ltproxy":
 	setenv GCN_PORT_NUMBER "5212"
 	breaksw
@@ -49,19 +52,27 @@ setenv LD_LIBRARY_PATH /grb/bin/lib/${HOSTTYPE}
 
 set done = 0
 while ( ${done} == 0 )
-  /bin/rm -f ${GCN_PIDFILE}
-  cd ${GCN_HOME}
-  echo "GCN Server starting." >>! ${GCN_LOOP_OUPTUT_FILE}
-  cd ${GCN_HOME}
-  (java GCN_Server ${GCN_SERVER_ARGS} >>! ${GCN_OUPTUT_FILE}) >>& ${GCN_OUPTUT_FILE} &
-  echo $! > ${GCN_PIDFILE}
-  set pid = `cat ${GCN_PIDFILE}`
-  set date_string = `date +"%Y/%m/%dT%H.%M.%S"`
-  echo "${date_string} GCN Server started on ${hostname}:${GCN_PORT_NUMBER} with PID ${pid}." >>! ${GCN_LOOP_OUPTUT_FILE}
-  echo "Subject: GCN_Server\n${date_string} GCN Server started on ${hostname}:${GCN_PORT_NUMBER} with PID ${pid}.\n" | mail ${GCN_MAIL_ADDRESSES}
-  wait
-  set date_string = `date +"%Y/%m/%dT%H.%M.%S"`
-  echo "${date_string} The GCN Server PID ${pid} has stopped." >>! ${GCN_LOOP_OUPTUT_FILE}
-  echo "Subject: GCN_Server\n${date_string} The GCN Server on ${hostname}:${GCN_PORT_NUMBER} with PID ${pid} has stopped.\n" | mail ${GCN_MAIL_ADDRESSES}
+    /bin/rm -f ${GCN_PIDFILE}
+    cd ${GCN_HOME}
+    echo "GCN Server starting." >>! ${GCN_LOOP_OUPTUT_FILE}
+    cd ${GCN_HOME}
+    (java GCN_Server ${GCN_SERVER_ARGS} >>! ${GCN_OUPTUT_FILE}) >>& ${GCN_OUPTUT_FILE} &
+    echo $! > ${GCN_PIDFILE}
+    set pid = `cat ${GCN_PIDFILE}`
+    set date_string = `date +"%Y/%m/%dT%H.%M.%S"`
+    echo "${date_string} GCN Server started on ${hostname}:${GCN_PORT_NUMBER} with PID ${pid}." >>! ${GCN_LOOP_OUPTUT_FILE}
+    echo "Subject: GCN_Server\n${date_string} GCN Server started on ${hostname}:${GCN_PORT_NUMBER} with PID ${pid}.\n" | mail ${GCN_MAIL_ADDRESSES}
+    wait
+    set date_string = `date +"%Y/%m/%dT%H.%M.%S"`
+    echo "${date_string} The GCN Server PID ${pid} has stopped." >>! ${GCN_LOOP_OUPTUT_FILE}
+    echo "Subject: GCN_Server\n${date_string} The GCN Server on ${hostname}:${GCN_PORT_NUMBER} with PID ${pid} has stopped.\n" | mail ${GCN_MAIL_ADDRESSES}
+    #
+    # If the server consistently fails this loop will spam the machine. Add a delay to stop this happening
+    #
+    @ DELAY = ${DELAY} + ${DELAY_INCREMENT}
+    echo "${date_string} Sleeping ${DELAY} seconds before retrying." >>! ${GCN_LOOP_OUPTUT_FILE}
+    /bin/sleep ${DELAY}
 end
-
+#
+# $Log: not supported by cvs2svn $
+#
