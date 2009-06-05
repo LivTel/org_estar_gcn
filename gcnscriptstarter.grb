@@ -5,7 +5,7 @@
 #
 # chkconfig: 345 95 5
 # description: org.estar.gcn.GCNDatagramScriptStarter startup script.
-#ident	"$Id: gcnscriptstarter.grb,v 1.15 2008-03-17 19:19:55 cjm Exp $"
+#ident	"$Id: gcnscriptstarter.grb,v 1.16 2009-06-05 16:55:57 cjm Exp $"
 GCN_SCRIPT_STARTER_TMP_HOME=/grb/tmp/
 GCN_SCRIPT_STARTER_SCRIPT_HOME=/grb/bin/tocs_commands
 GCN_SCRIPT_STARTER_OUPTUT_FILE=/grb/tmp/gcn_script_starter_output.txt
@@ -22,7 +22,7 @@ GCN_SCRIPT_STARTER_SCRIPT="-script ${GCN_SCRIPT_STARTER_SCRIPT_HOME}/gamma_ray_b
 # Also HOSTTYPE not present in /etc/init.d scripts?
 hostname=`/bin/hostname --short`
 case ${hostname} in
-    "ltproxy")
+    ltproxy|mdt-test)
 	# reject Swift BAT alerts with bits 3, 5, 8 set (= 0x128).
 	# 3 = flt_cat_src, 5 = def_not_grb, 7 = uncert_grb (low image significance), 8 = gnd_cat_src
 	GCN_SCRIPT_STARTER_COMMAND_ARGS="-swift_soln_status_reject_mask 0x128 -swift_filter_on_merit"
