@@ -1,5 +1,5 @@
 // GCNDatagramAlertData.java
-// $Header: /home/cjm/cvs/org_estar_gcn/GCNDatagramAlertData.java,v 1.4 2008-03-17 19:20:43 cjm Exp $
+// $Header: /home/cjm/cvs/org_estar_gcn/GCNDatagramAlertData.java,v 1.5 2012-06-22 14:29:27 cjm Exp $
 package org.estar.gcn;
 
 import java.lang.*;
@@ -12,14 +12,14 @@ import org.estar.astrometry.*;
 /**
  * Class holding data to do with a single GCN alert.
  * @author Chris Mottram
- * @version $Revision: 1.4 $
+ * @version $Revision: 1.5 $
  */
 public class GCNDatagramAlertData
 {
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramAlertData.java,v 1.4 2008-03-17 19:20:43 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramAlertData.java,v 1.5 2012-06-22 14:29:27 cjm Exp $";
 	/**
 	 * Alert type.
 	 */
@@ -33,10 +33,20 @@ public class GCNDatagramAlertData
 	 */
 	public final static int ALERT_TYPE_SWIFT = (1 << 2);
 	/**
+	 * Alert type.
+	 */
+	public final static int ALERT_TYPE_AGILE = (1 << 3);
+	/**
+	 * Alert type.
+	 */
+	public final static int ALERT_TYPE_FERMI = (1 << 4);
+	/**
 	 * Which spacecraft triggered this alert.
 	 * @see #ALERT_TYPE_HETE
 	 * @see #ALERT_TYPE_INTEGRAL
 	 * @see #ALERT_TYPE_SWIFT
+	 * @see #ALERT_TYPE_AGILE
+	 * @see #ALERT_TYPE_FERMI
 	 */
 	protected int alertType = 0;
 	/**
@@ -106,6 +116,8 @@ public class GCNDatagramAlertData
 	 * @see #ALERT_TYPE_HETE
 	 * @see #ALERT_TYPE_INTEGRAL
 	 * @see #ALERT_TYPE_SWIFT
+	 * @see #ALERT_TYPE_AGILE
+	 * @see #ALERT_TYPE_FERMI
 	 */
 	public void setAlertType(int i)
 	{
@@ -119,6 +131,8 @@ public class GCNDatagramAlertData
 	 * @see #ALERT_TYPE_HETE
 	 * @see #ALERT_TYPE_INTEGRAL
 	 * @see #ALERT_TYPE_SWIFT
+	 * @see #ALERT_TYPE_AGILE
+	 * @see #ALERT_TYPE_FERMI
 	 */
 	public int getAlertType()
 	{
@@ -132,6 +146,8 @@ public class GCNDatagramAlertData
 	 * @see #ALERT_TYPE_HETE
 	 * @see #ALERT_TYPE_INTEGRAL
 	 * @see #ALERT_TYPE_SWIFT
+	 * @see #ALERT_TYPE_AGILE
+	 * @see #ALERT_TYPE_FERMI
 	 */
 	public String getAlertTypeString()
 	{
@@ -143,6 +159,10 @@ public class GCNDatagramAlertData
 				return "INTEGRAL";
 			case ALERT_TYPE_SWIFT:
 				return "SWIFT";
+			case ALERT_TYPE_AGILE:
+				return "AGILE";
+			case ALERT_TYPE_FERMI:
+				return "FERMI";
 			default:
 				return "UNKNOWN";
 		}
@@ -435,6 +455,9 @@ public class GCNDatagramAlertData
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.4  2008/03/17 19:20:43  cjm
+// Added hasMerit parameter, for filtering Swift BAT alerts on Merit Parameters.
+//
 // Revision 1.3  2005/03/01 18:51:07  cjm
 // Added test boolean.
 //
