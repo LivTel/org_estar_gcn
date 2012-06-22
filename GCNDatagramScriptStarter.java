@@ -22,7 +22,7 @@ import org.estar.astrometry.*;
  * The server also supports a command socket, which can be used to configure the GCN Datagram Script Starter.
  * For details of the command socket command set see doControlCommand.
  * @author Chris Mottram
- * @version $Revision: 1.27 $
+ * @version $Revision: 1.28 $
  * @see #doControlCommand
  */
 public class GCNDatagramScriptStarter implements Runnable
@@ -31,7 +31,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.27 2008-03-17 19:27:14 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.28 2012-06-22 14:55:16 cjm Exp $";
 	/**
 	 * The default multicast port to listen on, as agreed by Steve.
 	 */
@@ -95,10 +95,18 @@ public class GCNDatagramScriptStarter implements Runnable
 	 */
 	protected double maxErrorBox = 60*60;
 	/**
+	 * The maximum propogation delay between detection of the GRB burst, and starting a followup.
+	 * A filter criteria for whether to start a followup for a particular burst.
+	 * Units of milliseconds.
+	 */
+	protected long maxPropogationDelay = 12*60*60*1000; // 12 hours
+	/**
 	 * Which alerts are passed on to the script.
 	 * @see GCNDatagramAlertData#ALERT_TYPE_HETE
 	 * @see GCNDatagramAlertData#ALERT_TYPE_INTEGRAL
 	 * @see GCNDatagramAlertData#ALERT_TYPE_SWIFT
+	 * @see GCNDatagramAlertData#ALERT_TYPE_AGILE
+	 * @see GCNDatagramAlertData#ALERT_TYPE_FERMI
 	 */
 	protected int allowedAlerts = 0;
 	/**
@@ -253,6 +261,8 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see GCNDatagramAlertData#ALERT_TYPE_HETE
 	 * @see GCNDatagramAlertData#ALERT_TYPE_INTEGRAL
 	 * @see GCNDatagramAlertData#ALERT_TYPE_SWIFT
+	 * @see GCNDatagramAlertData#ALERT_TYPE_AGILE
+	 * @see GCNDatagramAlertData#ALERT_TYPE_FERMI
 	 */	
 	public void setAllowedAlerts(int i)
 	{
@@ -266,6 +276,8 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see GCNDatagramAlertData#ALERT_TYPE_HETE
 	 * @see GCNDatagramAlertData#ALERT_TYPE_INTEGRAL
 	 * @see GCNDatagramAlertData#ALERT_TYPE_SWIFT
+	 * @see GCNDatagramAlertData#ALERT_TYPE_AGILE
+	 * @see GCNDatagramAlertData#ALERT_TYPE_FERMI
 	 */	
 	public void addAllowedAlerts(int i)
 	{
@@ -282,6 +294,20 @@ public class GCNDatagramScriptStarter implements Runnable
 	public void setMaxErrorBox(double d)
 	{
 		maxErrorBox = d;
+	}
+
+
+	/**
+	 * Method to set the maximum propogation delay, between the GRB burst being detected, and the
+	 * followup script being started.
+	 * This is a filter on whether to start the followup script, only GRB bursts received  within the
+	 * maxPropogationDelay will cause the followup script to be started
+	 * @param dms The maximum propogation delay in milliseconds.
+	 * @see #maxPropogationDelay
+	 */
+	public void setMaxPropogationDelay(int dms)
+	{
+		maxPropogationDelay = dms;
 	}
 
 	/**
@@ -344,7 +370,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	}
 
 	/**
-	 * Process data in packet
+	 * Process data in packet.
 	 * @see #packet
 	 * @see #packetInputStream
 	 * @see #alertData
@@ -361,6 +387,10 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see #readSwiftBatGRBPosition
 	 * @see #readSwiftXrtGRBPosition
 	 * @see #readSwiftUvotGRBPosition
+	 * @see #readSuperAgileGRBPosition
+	 * @see #readFermiLATGRBPosition
+	 * @see #readFermiLATGRBPositionTest
+	 * @see #readFermiLATGNDPosition
 	 */
 	protected void processData() throws Exception
 	{
@@ -465,6 +495,31 @@ public class GCNDatagramScriptStarter implements Runnable
 			//alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_SWIFT);
 			//readSwiftTestGRBPosition();
 			break;
+		    case 100:
+			    logger.log(" [SuperAGILE_GRB_POS_WAKEUP]");
+			    alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_AGILE);
+			    readSuperAgileGRBPosition(100);
+			    break;
+		    case 109:
+			    logger.log(" [SuperAGILE_GRB_POS_TEST]");
+			    alertData.setAlertType(0); // TEST packet only, don't set alert type
+			    readSuperAgileGRBPosition(109);
+			    break;
+		    case 121:
+			    logger.log(" [FERMI_LAT_GRB_POS_UPD]");
+			    alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_FERMI);
+			    readFermiLATGRBPosition();
+			    break;
+		    case 124:
+			    logger.log(" [FERMI_LAT_GRB_POS_TEST]");
+			    alertData.setAlertType(0); // TEST packet - not a real GRB
+			    readFermiLATGRBPositionTest();
+			    break;
+		    case 127:
+			    logger.log(" [FERMI_LAT_GND]");
+			    alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_FERMI);
+			    readFermiLATGNDPosition();
+			    break;
 		    default:
 			logger.log(" [TYPE-"+type+"]");
 		}
@@ -477,11 +532,15 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see #alertData
 	 * @see #allowedAlerts
 	 * @see #maxErrorBox
+	 * @see #maxPropogationDelay
 	 * @see #enableSocketAlerts
 	 * @see #swiftFilterOnMerit
 	 */
 	protected boolean alertFilter()
 	{
+		Date nowDate = null;
+		long propogationDelay;
+
 		if((allowedAlerts & alertData.getAlertType()) == 0)
 		{
 			logger.log("alertFilter stopped propogation of alert on type: allowed alerts "+allowedAlerts+
@@ -502,6 +561,20 @@ public class GCNDatagramScriptStarter implements Runnable
 				   maxErrorBox+" arcseconds smaller than alert error box radius "+
 				   (alertData.getErrorBoxSize()*60.0)+" arcseconds.");
 			return false;
+		}
+		// max Propogation Delay, if the GRB date was set in the alert data.
+		if(alertData.getGRBDate() != null)
+		{
+			nowDate = new Date();
+			propogationDelay = nowDate.getTime()-alertData.getGRBDate().getTime();
+			if(propogationDelay > maxPropogationDelay)
+			{
+				logger.log("alertFilter stopped propogation of alert on propogation delay: "+
+					   "propogation delay "+propogationDelay+
+					   " milliseconds larger than max propogation delay "+maxPropogationDelay+
+					   " milliseconds.");
+				return false;
+			}
 		}
 		// ensure RA filled in
 		if(alertData.getRA() == null)
@@ -805,7 +878,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			readSod();     // 3 - pkt_sod
 			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			trigNum = (tsn & 0x0000FFFF);
-			mesgNum = (tsn & 0xFFFF0000) >> 16;
+			mesgNum = (tsn & 0xFFFF0000) >>> 16;// logical not arithmetic shift
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
 			int burstTjd = packetInputStream.readInt(); // 5 - burst_tjd
@@ -842,7 +915,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			int gammatime = packetInputStream.readInt(); // 13 - gamma_time
 			int wxmtime = packetInputStream.readInt(); // 14 - wxm_time
 			int scpoint = packetInputStream.readInt(); // 15 - sc_point
-			int sczra   = (scpoint & 0xFFFF0000) >> 16;
+			int sczra   = (scpoint & 0xFFFF0000) >>> 16; // logical not arithmetic shift
 			int sczdec  = (scpoint & 0x0000FFFF);
 			logger.log("Time:: Gamma: "+gammatime+" Wxm: "+wxmtime);
 			logger.log("SC Pointing: RA(deg): "+(((double)sczra)/10000.0)+
@@ -858,11 +931,11 @@ public class GCNDatagramScriptStarter implements Runnable
 			int wxErrors = packetInputStream.readInt(); // 24 WXM Errors (bit-field) - Sys & Stat.
 			// wxErrors contains radius in arcsec, of statistical error (top 16 bits) 
 			// and systematic (bottom 16 bits.
-			logger.log("WXM error box (radius,arcsec) : statistical : "+((wxErrors&0xFFFF0000)>>16)+
+			logger.log("WXM error box (radius,arcsec) : statistical : "+((wxErrors&0xFFFF0000)>>>16)+
 				   " : systematic : "+(wxErrors&0x0000FFFF)+".");
 			int wxDimSig = packetInputStream.readInt(); // 25 WXM Packed numbers.
 			// wxDimSig contains the maximum dimension of the WXM error box [units arcsec] in top 16 bits
-			int wxErrorBoxArcsec = (wxDimSig&0xFFFF0000)>>16;
+			int wxErrorBoxArcsec = (wxDimSig&0xFFFF0000)>>>16;
 			logger.log("WXM error box (diameter,arcsec) : "+wxErrorBoxArcsec+".");
 			int sxra1 = packetInputStream.readInt();  // 26 - SC ra1 (x10e4 degs).
 			int sxdec1 = packetInputStream.readInt(); // 27 SC dec1 (x10e4 degs).
@@ -875,11 +948,11 @@ public class GCNDatagramScriptStarter implements Runnable
 			int sxErrors = packetInputStream.readInt(); // 34 SC Errors (bit-field) - Sys & Stat.
 			// sxErrors contains radius in arcsec, of statistical error (top 16 bits) 
 			// and systematic (bottom 16 bits).
-			logger.log("SXC error box (radius,arcsec) : statistical : "+((sxErrors&0xFFFF0000)>>16)+
+			logger.log("SXC error box (radius,arcsec) : statistical : "+((sxErrors&0xFFFF0000)>>>16)+
 				   " : systematic : "+(sxErrors&0x0000FFFF)+".");
 			int sxDimSig = packetInputStream.readInt(); // 35 SC Packed numbers.
 			// sxDimSig contains the maximum dimension of the SXC error box [units arcsec] in top 16 bits
-			int sxErrorBoxArcsec = (sxDimSig&0xFFFF0000)>>16;
+			int sxErrorBoxArcsec = (sxDimSig&0xFFFF0000)>>>16;
 			logger.log("SXC error box (diameter,arcsec) : "+sxErrorBoxArcsec+".");
 			// Take smallest of both error boxes (was largest until 2005/10/24)
 			if((wxErrorBoxArcsec > 0.0)&&(sxErrorBoxArcsec > 0.0))
@@ -945,7 +1018,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			readSod();     // 3 - pkt_sod
 			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			trigNum = (tsn & 0x0000FFFF);
-			mesgNum = (tsn & 0xFFFF0000) >> 16;
+			mesgNum = (tsn & 0xFFFF0000) >>> 16;// logical not arithmetic shift
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
 			int burstTjd = packetInputStream.readInt(); // 5 - burst_tjd
@@ -982,7 +1055,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			int gammatime = packetInputStream.readInt(); // 13 - gamma_time
 			int wxmtime = packetInputStream.readInt(); // 14 - wxm_time
 			int scpoint = packetInputStream.readInt(); // 15 - sc_point
-			int sczra   = (scpoint & 0xFFFF0000) >> 16;
+			int sczra   = (scpoint & 0xFFFF0000) >>> 16;// logical not arithmetic shift
 			int sczdec  = (scpoint & 0x0000FFFF);
 			logger.log("Time:: Gamma: "+gammatime+" Wxm: "+wxmtime);
 			logger.log("SC Pointing: RA(deg): "+(((double)sczra)/10000.0)+
@@ -998,11 +1071,11 @@ public class GCNDatagramScriptStarter implements Runnable
 			int wxErrors = packetInputStream.readInt(); // 24 WXM Errors (bit-field) - Sys & Stat.
 			// wxErrors contains radius in arcsec, of statistical error (top 16 bits) 
 			// and systematic (bottom 16 bits.
-			logger.log("WXM error box (radius,arcsec) : statistical : "+((wxErrors&0xFFFF0000)>>16)+
+			logger.log("WXM error box (radius,arcsec) : statistical : "+((wxErrors&0xFFFF0000)>>>16)+
 				   " : systematic : "+(wxErrors&0x0000FFFF)+".");
 			int wxDimSig = packetInputStream.readInt(); // 25 WXM Packed numbers.
 			// wxDimSig contains the maximum dimension of the WXM error box [units arcsec] in top 16 bits
-			int wxErrorBoxArcsec = (wxDimSig&0xFFFF0000)>>16;
+			int wxErrorBoxArcsec = (wxDimSig&0xFFFF0000)>>>16; // logical not arithmetic shift
 			logger.log("WXM error box (diameter,arcsec) : "+wxErrorBoxArcsec+".");
 			int sxra1 = packetInputStream.readInt();  // 26 - SC ra1 (x10e4 degs).
 			int sxdec1 = packetInputStream.readInt(); // 27 SC dec1 (x10e4 degs).
@@ -1015,11 +1088,11 @@ public class GCNDatagramScriptStarter implements Runnable
 			int sxErrors = packetInputStream.readInt(); // 34 SC Errors (bit-field) - Sys & Stat.
 			// sxErrors contains radius in arcsec, of statistical error (top 16 bits) 
 			// and systematic (bottom 16 bits).
-			logger.log("SXC error box (radius,arcsec) : statistical : "+((sxErrors&0xFFFF0000)>>16)+
+			logger.log("SXC error box (radius,arcsec) : statistical : "+((sxErrors&0xFFFF0000)>>>16)+
 				   " : systematic : "+(sxErrors&0x0000FFFF)+".");
 			int sxDimSig = packetInputStream.readInt(); // 35 SC Packed numbers.
 			// sxDimSig contains the maximum dimension of the SXC error box [units arcsec] in top 16 bits
-			int sxErrorBoxArcsec = (sxDimSig&0xFFFF0000)>>16;
+			int sxErrorBoxArcsec = (sxDimSig&0xFFFF0000)>>>16;
 			logger.log("SXC error box (diameter,arcsec) : "+sxErrorBoxArcsec+".");
 			// Take smallest of both error boxes (was largest until 2005/10/24)
 			if((wxErrorBoxArcsec > 0.0)&&(sxErrorBoxArcsec > 0.0))
@@ -1079,7 +1152,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			readSod(); // 3
 			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x0000FFFF);
-			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
+			int mesgNum = (tsn & 0xFFFF0000) >>> 16; // logical not arithmetic shift
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
@@ -1132,7 +1205,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			readSod(); // 3
 			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x0000FFFF);
-			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
+			int mesgNum = (tsn & 0xFFFF0000) >>> 16;  // logical not arithmetic shift
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
@@ -1207,7 +1280,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			readSod(); // 3
 			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x0000FFFF);
-			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
+			int mesgNum = (tsn & 0xFFFF0000) >>> 16;  // logical not arithmetic shift
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
@@ -1282,7 +1355,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			readSod(); // 3
 			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x0000FFFF);
-			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
+			int mesgNum = (tsn & 0xFFFF0000) >>> 16; // logical not arithmetic shift
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
@@ -1355,7 +1428,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			readSod(); // 3
 			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x0000FFFF);
-			int mesgNum = (tsn & 0xFFFF0000) >> 16;  
+			int mesgNum = (tsn & 0xFFFF0000) >>> 16; // logical not arithmetic shift
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
@@ -1399,7 +1472,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			readSod(); // 3
 			int tsn = packetInputStream.readInt();   // 4 - trig_seq_num
 			int trigNum = (tsn & 0x00FFFFFF);
-			int mesgNum = (tsn & 0xFF000000) >> 24;  
+			int mesgNum = (tsn & 0xFF000000) >>> 24; // logical not arithmetic shift
 			logger.log("Trigger No: "+trigNum+" Mesg Seq. No: "+mesgNum);
 			alertData.setTriggerNumber(trigNum);
 			alertData.setSequenceNumber(mesgNum);
@@ -1497,7 +1570,7 @@ public class GCNDatagramScriptStarter implements Runnable
 			else
 				logger.log("Merit parameter : 0 : Failed to decode into a valid flag.");
 			// 1 Flag bit indicating Transient or not (1 or 0, resp); unknown src with T_trig>64sec.
-			sbyte = (byte)((meritWord0 & 0xFF00) >> 8);
+			sbyte = (byte)((meritWord0 & 0xFF00) >>> 8);// logical not arithmetic shift
 			meritParameterList[1] = (int)sbyte;
 			logger.log("Merit parameter : 1 = "+meritParameterList[1]);
 			if(meritParameterList[1] == 1)
@@ -1766,6 +1839,446 @@ public class GCNDatagramScriptStarter implements Runnable
 		}
 	}
 
+	/**
+	 * Decode a SuperAGILE GRB Position. The code should work for packet types
+	 * 100 (SuperAGILE_GRB_POS_WAKEUP), 101 (SuperAGILE_GRB_POS_GROUND), 102 (SuperAGILE_GRB_POS_REFINED),
+	 * and 109 (SuperAGILE_GRB_POS_TEST). SuperAGILE_GRB_POS_GROUND and SuperAGILE_GRB_POS_REFINED
+	 * are too slow (alert propogation delay).  SuperAGILE_GRB_POS_TEST is a test packet and should not trigger
+	 * a real followup!.
+	 * @param packetType The SuperAGILE packet type to decode. One of 100,101,102,109. Only 100 and 109
+	 *       are considered at the moment, although 101 and 102 should be indentical. 109 should be 
+	 *       handled differently as it is not a real GRB!
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
+	 */
+	public void readSuperAgileGRBPosition(int packetType)
+	{
+		RA ra = null;
+		Dec dec = null;
+		Date burstDate = null;
+
+		try
+		{
+			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
+			readSod(); // 3
+			int trigNum = packetInputStream.readInt(); // 4 - trig_num (number of seconds since 01/01/2001)
+			logger.log("Trigger No: "+trigNum);
+			alertData.setTriggerNumber(trigNum);
+			alertData.setSequenceNumber(0);
+			//TJD=12640 is 01 Jan 2003
+			int burstTjd = packetInputStream.readInt(); // 5 Burst/Trigger TJD.
+			int burstSod = packetInputStream.readInt(); // 6 Burst/Trigger SOD. (centi-seconds in the day)
+			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
+			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
+			logger.log("Burst Date: "+burstDate);
+			alertData.setGRBDate(burstDate);
+			int bra    = packetInputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = packetInputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			ra = new RA();
+			dec = new Dec();
+			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
+			dec.fromRadians(Math.toRadians(((double)bdec)/10000.0));
+			// The LAT returns J2000 coordinates.
+			alertData.setRA(ra);
+			alertData.setDec(dec);
+			alertData.setEpoch(2000.0);
+			logger.log("Burst RA: "+ra);
+			logger.log("Burst Dec: "+dec);
+			logger.log("Epoch: "+2000.0);
+			int burstIntensityX = packetInputStream.readInt(); // 9 [0.001-cnts] Num events in each X 1-D
+			logger.log("Burst Intensity X 1-D (15-45keV): "+(((double)burstIntensityX)/1000.0)+" counts.");
+			int burstIntensityY = packetInputStream.readInt(); // 10 [0.001-cnts] Num events in each Y 1-D
+			logger.log("Burst Intensity Y 1-D (15-45keV): "+(((double)burstIntensityY)/1000.0)+" counts.");
+			int burstError = packetInputStream.readInt(); // 11 Burst error degrees (0..180) * 10000)
+			// burst error is radius of circle in degrees*10000 containing TBD% of bursts!
+			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
+			logger.log("Error Box Radius (arcmin): "+((((double)burstError)*60.0)/10000.0));
+			readStuff(12, 17);// 12-17 spare x 6
+			int triggerId = packetInputStream.readInt(); // 18 Type of source/trigger found
+			if((triggerId & (1<<1)) > 0)
+				logger.log("Trigger Id:Flight: This is a GRB.");
+			else
+				logger.log("Trigger Id:Flight: This is NOT a GRB.");
+			if((triggerId & (1<<5)) > 0)
+				logger.log("Trigger Id:Ground: This is NOT a GRB (ground retraction).");
+			if((triggerId & (1<<13)) > 0)
+				logger.log("Trigger Id:Ground: This is near a bright star.");
+			if((triggerId & (1<<28)) > 0)
+				logger.log("Trigger Id:Ground: There is a spatial coincidence with another event.");
+			if((triggerId & (1<<29)) > 0)
+				logger.log("Trigger Id:Ground: There is a temporal coincidence with another event.");
+			if((triggerId & (1<<30)) > 0)
+				logger.log("Trigger Id:Ground: This is a test submission.");
+			int misc = packetInputStream.readInt(); // 19
+			if((misc & (1<<13)) > 0)
+				logger.log("Misc: The position is less than 0.3 deg from a bright (M<6.4) star.");
+			if((misc & (1<<14)) > 0)
+				logger.log("Misc: This position is (nearly) inside a NGC galaxy.");
+			if((misc & (1<<15)) > 0)
+				logger.log("Misc: A galaxy is (nearly) inside this position error box.");
+			if((misc & (1<<30)) > 0)
+				logger.log("Misc: The notice was ground generated.");
+			int significance = packetInputStream.readInt(); // 20
+			double significanceX = ((double)(significance&0x0000FFFF))/100.0;
+			logger.log("X-Axies 1D ignificance detections(sigma):"+significanceX);
+			double significanceY = ((double)((significance>>>16)&0x0000FFFF))/100.0;
+			logger.log("Y-Axies 1D ignificance detections(sigma):"+significanceY);
+			readStuff(21, 38);// 21-38 spare x 17
+			readTerm(); // 39 - TERM.
+		}
+		catch  (Exception e)
+		{
+			logger.error("SuperAGILE GRB POSITION: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
+		}
+	}
+
+	/**
+	 * Fermi LAT GRB position update (Type 121,FERMI_LAT_GRB_POS_UPD).
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
+	 */
+	public void readFermiLATGRBPosition()
+	{
+		RA ra = null;
+		Dec dec = null;
+		Date burstDate = null;
+
+		try
+		{
+			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
+			readSod(); // 3
+			int trigNum = packetInputStream.readInt(); // 4 - trig_num (number of seconds since 01/01/2001)
+			logger.log("Trigger No: "+trigNum);
+			alertData.setTriggerNumber(trigNum);
+			alertData.setSequenceNumber(0);
+			//TJD=12640 is 01 Jan 2003
+			int burstTjd = packetInputStream.readInt(); // 5 Burst/Trigger TJD.
+			int burstSod = packetInputStream.readInt(); // 6 Burst/Trigger SOD. (centi-seconds in the day)
+			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
+			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
+			logger.log("Burst Date: "+burstDate);
+			alertData.setGRBDate(burstDate);
+			int bra    = packetInputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = packetInputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			ra = new RA();
+			dec = new Dec();
+			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
+			dec.fromRadians(Math.toRadians(((double)bdec)/10000.0));
+			// The LAT returns J2000 coordinates.
+			alertData.setRA(ra);
+			alertData.setDec(dec);
+			alertData.setEpoch(2000.0);
+			logger.log("Burst RA: "+ra);
+			logger.log("Burst Dec: "+dec);
+			logger.log("Epoch: "+2000.0);
+			int burstIntensity = packetInputStream.readInt(); // 9 Num events used in location calc[counts]
+			logger.log("Burst Intensity: "+burstIntensity+" counts.");
+			// 10 event counts in 4 energy bands.
+			// All these ints are actually unsigned (which Java doesn't support!)
+			int burstIntensity4 = packetInputStream.readInt(); 
+			int burstIntensity0 = burstIntensity4 & 0x000000FF;
+			int burstIntensity1 = (burstIntensity4 & 0x0000FF00) >> 8;
+			int burstIntensity2 = (burstIntensity4 & 0x00FF0000) >> 16;
+			int burstIntensity3 = (burstIntensity4 & 0xFF000000) >>> 24;
+			logger.log("Burst Intensity: 0-100MeV   : "+burstIntensity0+" counts.");
+			logger.log("Burst Intensity: 100MeV-1GeV: "+burstIntensity1+" counts.");
+			logger.log("Burst Intensity: 1GeV-10GeV : "+burstIntensity2+" counts.");
+			logger.log("Burst Intensity: >10GeV     : "+burstIntensity3+" counts.");
+			int burstError = packetInputStream.readInt(); // 11 Burst error degrees (0..180) * 10000)
+			// burst error is radius of circle in degrees*10000 containing TBD% of bursts!
+			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
+			logger.log("Error Box Radius (arcmin): "+((((double)burstError)*60.0)/10000.0));
+			double phi = ((double)(packetInputStream.readInt()))/100.0; // 12 phi 0..359 * 100 [deg]
+			double theta = ((double)(packetInputStream.readInt()))/100.0; // 13 theta 0..100 * 100 [deg]
+			logger.log("Instrumental Position: theta (angle off boresight(deg)):"+theta);
+			logger.log("Instrumental Position: phi (azimuthal angle (clockwise,deg)):"+phi);
+			int integrationTime = packetInputStream.readInt(); // 14 Integration time [msec]
+			logger.log("Integration time (msec):"+integrationTime);
+			readStuff(15, 16);// 15-16 spare x 2
+			int triggerIndex = packetInputStream.readInt(); // 17 Trigger Index
+			logger.log("Trigger Index:"+triggerIndex);
+			int triggerId = packetInputStream.readInt(); // 18
+			if((triggerId & (1<<0)) > 0)
+				logger.log("Starting location was LAT");
+			else
+				logger.log("Starting location was GBM");
+			if((triggerId & (1<<1)) > 0)
+				logger.log("Only Gammas above a cut used in the location method.");
+			else
+				logger.log("All Gammas used in the location method.");
+			if((triggerId & (1<<5)) > 0)
+				logger.log("Ground: Definately not a GRB (retraction).");
+			if((triggerId & (1<<28)) > 0)
+				logger.log("Ground: There was a spatial coincidence with another event.");
+			if((triggerId & (1<<29)) > 0)
+				logger.log("Ground: There was a temporal coincidence with another event.");
+			int misc = packetInputStream.readInt(); // 19
+			if((misc & (1<<0)) > 0)
+				logger.log("A repoint request was made to the spacecraft.");
+			if((misc & (1<<11)) > 0)
+				logger.log("RA and/or Dec value is out of range.");
+			if((misc & (1<<13)) > 0)
+				logger.log("Position is less than 0.3deg from a bright star (M<6.5).");
+			if((misc & (1<<14)) > 0)
+				logger.log("Position is (nearly) inside an NGC galaxy.");
+			if((misc & (1<<15)) > 0)
+				logger.log("Galaxy in (nearly) inside the Position error box.");
+			int recordSequenceNumber = packetInputStream.readInt(); // 20
+			alertData.setSequenceNumber(recordSequenceNumber);
+			readStuff(21, 24);// 21-24 spare x 4
+			int tempStat = packetInputStream.readInt(); // 25 (int)(4*(-log10(probability)))
+			logger.log("Temporal Test Statistic(>120 is a real GRB):"+tempStat);
+			int imageStat = packetInputStream.readInt(); // 26 (int)(4*(-log10(probability)))
+			logger.log("Image Test Statistic(>120 is a real GRB):"+imageStat);
+			readStuff(27, 30);// 27-30 spare x 4
+			readStuff(31, 34);// 31-24 First and last photon timestamps
+			readStuff(35, 36);// 35-36 spare x 2
+			// 37 This MIGHT be the burst id (documentation unclear)
+			int burstId = packetInputStream.readInt(); 
+			// 38 quality of location (0-1*10000)
+			double locationQuality = ((double)(packetInputStream.readInt()))/10000; 
+			logger.log("Quality of Location(0..1):"+locationQuality);
+			readTerm(); // 39 - TERM.
+		}
+		catch  (Exception e)
+		{
+			logger.error("FERMI LAT GRB POSITION: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
+		}
+	}
+
+	/**
+	 * Fermi LAT GRB position update TEST packet (Type 124,FERMI_LAT_GRB_POS_TEST).
+	 * This is a TEST packet, and does not represent a real GRB. Therefire ensure alertData
+	 * is not setup, but log contents for testing purposes.
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
+	 */
+	public void readFermiLATGRBPositionTest()
+	{
+		RA ra = null;
+		Dec dec = null;
+		Date burstDate = null;
+
+		try
+		{
+			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
+			readSod(); // 3
+			int trigNum = packetInputStream.readInt(); // 4 - trig_num (number of seconds since 01/01/2001)
+			logger.log("Trigger No: "+trigNum);
+			alertData.setTriggerNumber(trigNum);
+			alertData.setSequenceNumber(0);
+			//TJD=12640 is 01 Jan 2003
+			int burstTjd = packetInputStream.readInt(); // 5 Burst/Trigger TJD.
+			int burstSod = packetInputStream.readInt(); // 6 Burst/Trigger SOD. (centi-seconds in the day)
+			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
+			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
+			logger.log("Burst Date: "+burstDate);
+			alertData.setGRBDate(burstDate);
+			int bra    = packetInputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = packetInputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			ra = new RA();
+			dec = new Dec();
+			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
+			dec.fromRadians(Math.toRadians(((double)bdec)/10000.0));
+			// The LAT returns J2000 coordinates.
+			alertData.setRA(ra);
+			alertData.setDec(dec);
+			alertData.setEpoch(2000.0);
+			logger.log("Burst RA: "+ra);
+			logger.log("Burst Dec: "+dec);
+			logger.log("Epoch: "+2000.0);
+			int burstIntensity = packetInputStream.readInt(); // 9 Num events used in location calc[counts]
+			logger.log("Burst Intensity: "+burstIntensity+" counts.");
+			// 10 event counts in 4 energy bands.
+			// All these ints are actually unsigned (which Java doesn't support!)
+			int burstIntensity4 = packetInputStream.readInt(); 
+			int burstIntensity0 = burstIntensity4 & 0x000000FF;
+			int burstIntensity1 = (burstIntensity4 & 0x0000FF00) >>> 8; // logical not arithmetic shift
+			int burstIntensity2 = (burstIntensity4 & 0x00FF0000) >>> 16;// logical not arithmetic shift
+			int burstIntensity3 = (burstIntensity4 & 0xFF000000) >>> 24;// logical not arithmetic shift
+			logger.log("Burst Intensity: 0-100MeV   : "+burstIntensity0+" counts.");
+			logger.log("Burst Intensity: 100MeV-1GeV: "+burstIntensity1+" counts.");
+			logger.log("Burst Intensity: 1GeV-10GeV : "+burstIntensity2+" counts.");
+			logger.log("Burst Intensity: >10GeV     : "+burstIntensity3+" counts.");
+			int burstError = packetInputStream.readInt(); // 11 Burst error degrees (0..180) * 10000)
+			// burst error is radius of circle in degrees*10000 containing TBD% of bursts!
+			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
+			logger.log("Error Box Radius (arcmin): "+((((double)burstError)*60.0)/10000.0));
+			double phi = ((double)(packetInputStream.readInt()))/100.0; // 12 phi 0..359 * 100 [deg]
+			double theta = ((double)(packetInputStream.readInt()))/100.0; // 13 theta 0..100 * 100 [deg]
+			logger.log("Instrumental Position: theta (angle off boresight(deg)):"+theta);
+			logger.log("Instrumental Position: phi (azimuthal angle (clockwise,deg)):"+phi);
+			int integrationTime = packetInputStream.readInt(); // 14 Integration time [msec]
+			logger.log("Integration time (msec):"+integrationTime);
+			readStuff(15, 16);// 15-16 spare x 2
+			int triggerIndex = packetInputStream.readInt(); // 17 Trigger Index
+			logger.log("Trigger Index:"+triggerIndex);
+			int triggerId = packetInputStream.readInt(); // 18
+			if((triggerId & (1<<0)) > 0)
+				logger.log("Starting location was LAT");
+			else
+				logger.log("Starting location was GBM");
+			if((triggerId & (1<<1)) > 0)
+				logger.log("Only Gammas above a cut used in the location method.");
+			else
+				logger.log("All Gammas used in the location method.");
+			if((triggerId & (1<<5)) > 0)
+				logger.log("Ground: Definately not a GRB (retraction).");
+			if((triggerId & (1<<28)) > 0)
+				logger.log("Ground: There was a spatial coincidence with another event.");
+			if((triggerId & (1<<29)) > 0)
+				logger.log("Ground: There was a temporal coincidence with another event.");
+			int misc = packetInputStream.readInt(); // 19
+			if((misc & (1<<0)) > 0)
+				logger.log("A repoint request was made to the spacecraft.");
+			if((misc & (1<<11)) > 0)
+				logger.log("RA and/or Dec value is out of range.");
+			if((misc & (1<<13)) > 0)
+				logger.log("Position is less than 0.3deg from a bright star (M<6.5).");
+			if((misc & (1<<14)) > 0)
+				logger.log("Position is (nearly) inside an NGC galaxy.");
+			if((misc & (1<<15)) > 0)
+				logger.log("Galaxy in (nearly) inside the Position error box.");
+			int recordSequenceNumber = packetInputStream.readInt(); // 20
+			alertData.setSequenceNumber(recordSequenceNumber);
+			readStuff(21, 24);// 21-24 spare x 4
+			int tempStat = packetInputStream.readInt(); // 25 (int)(4*(-log10(probability)))
+			logger.log("Temporal Test Statistic(>120 is a real GRB):"+tempStat);
+			int imageStat = packetInputStream.readInt(); // 26 (int)(4*(-log10(probability)))
+			logger.log("Image Test Statistic(>120 is a real GRB):"+imageStat);
+			readStuff(27, 37);// 27-37 spare x 11
+			// 38 quality of location (0-1*10000)
+			double locationQuality = ((double)(packetInputStream.readInt()))/10000; 
+			logger.log("Quality of Location(0..1):"+locationQuality);
+			readTerm(); // 39 - TERM.
+		}
+		catch  (Exception e)
+		{
+			logger.error("FERMI LAT GRB POSITION TEST: Error reading: ",e);
+		}
+	}
+
+	/**
+	 * Fermi LAT ground position update (Type 127,FERMI_LAT_GND).
+	 * @see #readHdr
+	 * @see #readSod
+	 * @see #readStuff
+	 * @see #readTerm
+	 * @see #packetInputStream
+	 * @see #logger
+	 * @see #alertData
+	 * @see #truncatedJulianDateSecondOfDayToDate
+	 */
+	public void readFermiLATGNDPosition()
+	{
+		RA ra = null;
+		Dec dec = null;
+		Date burstDate = null;
+
+		try
+		{
+			readHdr(); // 0, 1, 2 - pkt_type, pkt_sernum, pkt_hop_cnt
+			readSod(); // 3
+			int trigNum = packetInputStream.readInt(); // 4 - trig_num (number of seconds since 01/01/2001)
+			logger.log("Trigger No: "+trigNum);
+			alertData.setTriggerNumber(trigNum);
+			alertData.setSequenceNumber(0);
+			//TJD=12640 is 01 Jan 2003
+			int burstTjd = packetInputStream.readInt(); // 5 Burst/Trigger TJD.
+			int burstSod = packetInputStream.readInt(); // 6 Burst/Trigger SOD. (centi-seconds in the day)
+			logger.log("Burst TJD: "+burstTjd+" : "+burstSod+" centi-seconds of day.");
+			burstDate = truncatedJulianDateSecondOfDayToDate(burstTjd,burstSod);
+			logger.log("Burst Date: "+burstDate);
+			alertData.setGRBDate(burstDate);
+			int bra    = packetInputStream.readInt(); // 7 RA(0..359.999)degrees *10000.
+			int bdec   = packetInputStream.readInt(); // 8 Dec(-90..90)degrees *10000.
+			ra = new RA();
+			dec = new Dec();
+			ra.fromRadians(Math.toRadians(((double)bra)/10000.0));
+			dec.fromRadians(Math.toRadians(((double)bdec)/10000.0));
+			// The LAT returns J2000 coordinates.
+			alertData.setRA(ra);
+			alertData.setDec(dec);
+			alertData.setEpoch(2000.0);
+			logger.log("Burst RA: "+ra);
+			logger.log("Burst Dec: "+dec);
+			logger.log("Epoch: "+2000.0);
+			int burstIntensity = packetInputStream.readInt(); // 9 Num events used in location calc[counts]
+			logger.log("Burst Intensity: "+burstIntensity+" counts.");
+			readStuff(10, 10); // 10 spare
+			int burstError = packetInputStream.readInt(); // 11 Burst error degrees (0..180) * 10000)
+			// burst error is radius of circle in degrees*10000 containing TBD% of bursts!
+			alertData.setErrorBoxSize((((double)burstError)*60.0)/10000.0);// in arc-min
+			logger.log("Error Box Radius (arcmin): "+((((double)burstError)*60.0)/10000.0));
+			double phi = ((double)(packetInputStream.readInt()))/100.0; // 12 phi 0..359 * 100 [deg]
+			double theta = ((double)(packetInputStream.readInt()))/100.0; // 13 theta 0..100 * 100 [deg]
+			logger.log("Instrumental Position: theta (angle off boresight(deg)):"+theta);
+			logger.log("Instrumental Position: phi (azimuthal angle (clockwise,deg)):"+phi);
+			readStuff(14, 17);// 14-17 spare x 4
+			int triggerId = packetInputStream.readInt(); // 18
+			if((triggerId & (1<<0)) > 0)
+				logger.log("Starting location was LAT");
+			else
+				logger.log("Starting location was GBM");
+			if((triggerId & (1<<1)) > 0)
+				logger.log("Only Gammas above a cut used in the location method.");
+			else
+				logger.log("All Gammas used in the location method.");
+			if((triggerId & (1<<5)) > 0)
+				logger.log("Ground: Definately not a GRB (retraction).");
+			if((triggerId & (1<<28)) > 0)
+				logger.log("Ground: There was a spatial coincidence with another event.");
+			if((triggerId & (1<<29)) > 0)
+				logger.log("Ground: There was a temporal coincidence with another event.");
+			int misc = packetInputStream.readInt(); // 19
+			if((misc & (1<<0)) > 0)
+				logger.log("A repoint request was made to the spacecraft.");
+			if((misc & (1<<11)) > 0)
+				logger.log("RA and/or Dec value is out of range.");
+			if((misc & (1<<13)) > 0)
+				logger.log("Position is less than 0.3deg from a bright star (M<6.5).");
+			if((misc & (1<<14)) > 0)
+				logger.log("Position is (nearly) inside an NGC galaxy.");
+			if((misc & (1<<15)) > 0)
+				logger.log("Galaxy in (nearly) inside the Position error box.");
+			readStuff(20, 25);// 20-25 spare x 6
+			int significance = packetInputStream.readInt(); // 26 (int)(sqrt(TS)*100)
+			logger.log("Significance:"+significance);
+			int eventCounts0 = packetInputStream.readInt(); // 27 Evt_cnts in the 0.1-1.0 GeV band
+			logger.log("Event Counts in 0.1-1.0 GeV band:"+eventCounts0);
+			int eventCounts1 = packetInputStream.readInt(); // 28 Evt_cnts in the 1.0-10 GeV band
+			logger.log("Event Counts in 1.0-10 GeV band:"+eventCounts1);
+			int eventCounts2 = packetInputStream.readInt(); // 29 Evt_cnts in the 10-inf GeV band
+			logger.log("Event Counts in 10-inf GeV band:"+eventCounts2);
+			readStuff(30, 38);// 30-38 spare x 9
+			readTerm(); // 39 - TERM.
+		}
+		catch  (Exception e)
+		{
+			logger.error("FERMI LAT Ground POSITION: Error reading: ",e);
+			alertData.setAlertType(0); // ensure this is not propogated as an alert
+		}
+	}
 
 	/**
 	 * Return a Java Date for the specified input fields.
@@ -2149,6 +2662,14 @@ public class GCNDatagramScriptStarter implements Runnable
 								  "-sequence_number requires an integer argument.\n");
 					}
 				}
+				else if(args[i].equals("-AGILE"))
+				{
+					alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_AGILE);
+				}
+				else if(args[i].equals("-FERMI"))
+				{
+					alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_FERMI);
+				}
 				else if(args[i].equals("-HETE"))
 				{
 					alertData.setAlertType(GCNDatagramAlertData.ALERT_TYPE_HETE);
@@ -2249,6 +2770,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see #setGroupAddress
 	 * @see #setScript
 	 * @see #setMaxErrorBox
+	 * @see #setMaxPropogationDelay
 	 * @see #setAllowedAlerts
 	 * @see #addAllowedAlerts
 	 * @see #swiftSolnStatusRejectMask
@@ -2260,6 +2782,8 @@ public class GCNDatagramScriptStarter implements Runnable
 	 * @see GCNDatagramAlertData#ALERT_TYPE_HETE
 	 * @see GCNDatagramAlertData#ALERT_TYPE_INTEGRAL
 	 * @see GCNDatagramAlertData#ALERT_TYPE_SWIFT
+	 * @see GCNDatagramAlertData#ALERT_TYPE_AGILE
+	 * @see GCNDatagramAlertData#ALERT_TYPE_FERMI
 	 */
 	protected void parseArgs(String args[])
 	{
@@ -2275,7 +2799,9 @@ public class GCNDatagramScriptStarter implements Runnable
 			{
 				addAllowedAlerts(GCNDatagramAlertData.ALERT_TYPE_HETE|
 						 GCNDatagramAlertData.ALERT_TYPE_INTEGRAL|
-						 GCNDatagramAlertData.ALERT_TYPE_SWIFT);
+						 GCNDatagramAlertData.ALERT_TYPE_SWIFT|
+						 GCNDatagramAlertData.ALERT_TYPE_AGILE|
+						 GCNDatagramAlertData.ALERT_TYPE_FERMI);
 			}
 			else if(args[i].equals("-control_port"))
 			{
@@ -2340,6 +2866,14 @@ public class GCNDatagramScriptStarter implements Runnable
 				help();
 				System.exit(0);
 			}
+			else if(args[i].equals("-agile"))
+			{
+				addAllowedAlerts(GCNDatagramAlertData.ALERT_TYPE_AGILE);
+			}
+			else if(args[i].equals("-fermi"))
+			{
+				addAllowedAlerts(GCNDatagramAlertData.ALERT_TYPE_FERMI);
+			}
 			else if(args[i].equals("-hete"))
 			{
 				addAllowedAlerts(GCNDatagramAlertData.ALERT_TYPE_HETE);
@@ -2369,6 +2903,32 @@ public class GCNDatagramScriptStarter implements Runnable
 				else
 				{
 					System.err.println("GCNDatagramScriptStarter:-max_error_box requires a number.");
+					System.exit(4);
+				}
+			}
+			else if(args[i].equals("-max_propogation_delay")||args[i].equals("-mpd"))
+			{
+				if((i+1) < args.length)
+				{
+					try
+					{
+						intValue = Integer.parseInt(args[i+1]);
+						setMaxPropogationDelay(intValue);
+					}
+					catch(Exception e)
+					{
+						System.err.println("GCNDatagramScriptStarter:"+
+								   "Parsing max propogation delay:"+args[i+1]+
+								   " failed:"+e);
+						e.printStackTrace(System.err);
+						System.exit(3);
+					}
+					i++;
+				}
+				else
+				{
+					System.err.println("GCNDatagramScriptStarter:"+
+							   "-max_propogation_delay requires a number.");
 					System.exit(4);
 				}
 			}
@@ -2499,8 +3059,9 @@ public class GCNDatagramScriptStarter implements Runnable
 				   "-Dhttp.proxyPort=8080 GCNDatagramScriptStarter \n"+
 				   "\t[-multicast_port <n>][-group_address <address>]"+
 				   "\t[-control_port <n>][-disable_manual_alerts][-disable_socket_alerts]"+
-				   "\t[-script <filename>][-all][-hete][-integral][-swift]\n"+
+				   "\t[-script <filename>][-all][-agile][-fermi][-hete][-integral][-swift]\n"+
 				   "\t[-max_error_box|-meb <arcsecs>]"+
+				   "\t[-max_propogation_delay|-mpd <milliseconds>]"+
 				   "\t[-swift_soln_status_accept_mask|-sssam <bit mask>]"+
 				   "\t[-swift_soln_status_reject_mask|-sssrm <bit mask>]"+
 				   "\t[-sfom|-swift_filter_on_merit]");
@@ -2509,10 +3070,13 @@ public class GCNDatagramScriptStarter implements Runnable
 		System.out.println("-control_port specifies the port the control server sits on.");
 		System.out.println("-disable_manual_alerts does not call the script when an alert is requested from the control socket.");
 		System.out.println("-disable_socket_alerts does not call the script when an alert is generated from the multicast socket.");
+		System.out.println("-agile specifies to call the script for AGILE LAT alerts.");
+		System.out.println("-fermi specifies to call the script for FERMI LAT alerts.");
 		System.out.println("-hete specifies to call the script for HETE alerts.");
 		System.out.println("-integral specifies to call the script for INTEGRAL alerts.");
 		System.out.println("-swift specifies to call the script for SWIFT alerts.");
 		System.out.println("-max_error_box means only call the script when the error box (radius) is less than that size.");
+		System.out.println("-max_propogation_delay only calls the script when the GRB trigger has taken less than propogation delay milliseconds to arrive.");
 		System.out.println("-sssam sets the Swift solnStatus bits that MUST be present for the script to be started.");
 		System.out.println("-sssrm sets the Swift solnStatus bits that MUST NOT be present for the script to be started.");
 		System.out.println("-sssam and -sssrm can be specified in hexidecimal using the '0x' prefix.");
@@ -2912,6 +3476,12 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.27  2008/03/17 19:27:14  cjm
+// Added swiftFilterOnMerit control parameter.
+// Alert data now stores hasMerit.
+// Swift XRT and UVOT position set hasMerit true.
+// Swift BAT alerts now set hasMerit on whether the Merit Parameters say the burst is a GRB.
+//
 // Revision 1.26  2007/10/23 12:48:09  cjm
 // More BAT solnStatus bits (logging).
 // Logging of extracted merit parameters.
