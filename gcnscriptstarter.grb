@@ -5,16 +5,19 @@
 #
 # chkconfig: 345 95 5
 # description: org.estar.gcn.GCNDatagramScriptStarter startup script.
-#ident	"$Id: gcnscriptstarter.grb,v 1.16 2009-06-05 16:55:57 cjm Exp $"
+#ident	"$Id: gcnscriptstarter.grb,v 1.17 2012-06-22 14:58:05 cjm Exp $"
 GCN_SCRIPT_STARTER_TMP_HOME=/grb/tmp/
 GCN_SCRIPT_STARTER_SCRIPT_HOME=/grb/bin/tocs_commands
 GCN_SCRIPT_STARTER_OUPTUT_FILE=/grb/tmp/gcn_script_starter_output.txt
 GCN_SCRIPT_STARTER_USER=eng
-# SPACECRAFT_FILTER: -all, -HETE, -INTEGRAL, -SWIFT
-GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-all"
 # error box radius in arcseconds (150 = 2.5 arcmins)
-# NB 600 (10 arcmin radius) for now - LT is set to try anything during comissioning
+# NB 600 (10 arcmin radius)
 GCN_SCRIPT_STARTER_MAX_ERROR_BOX="-max_error_box 600"
+# Maximum length of time between the GRB being detected, and us receiving the packet
+# and starting a followup in response. i.e. don't followup GRBs that take too long to reach us.
+# in milliseconds: There are 3600000 ms/hr
+GCN_SCRIPT_STARTER_MAX_PROPOGATION_DELAY="-max_propogation_delay 3600000"
+#GCN_SCRIPT_STARTER_MAX_PROPOGATION_DELAY=""
 # name of script to run. Will be run from $GCN_SCRIPT_STARTER_SCRIPT_HOME
 GCN_SCRIPT_STARTER_SCRIPT="-script ${GCN_SCRIPT_STARTER_SCRIPT_HOME}/gamma_ray_burst_alert"
 # misc command line arguments
@@ -23,16 +26,22 @@ GCN_SCRIPT_STARTER_SCRIPT="-script ${GCN_SCRIPT_STARTER_SCRIPT_HOME}/gamma_ray_b
 hostname=`/bin/hostname --short`
 case ${hostname} in
     ltproxy|mdt-test)
+        # SPACECRAFT_FILTER: -all, -agile -fermi -hete -integral -swift
+	GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-hete -integral -swift"
 	# reject Swift BAT alerts with bits 3, 5, 8 set (= 0x128).
 	# 3 = flt_cat_src, 5 = def_not_grb, 7 = uncert_grb (low image significance), 8 = gnd_cat_src
 	GCN_SCRIPT_STARTER_COMMAND_ARGS="-swift_soln_status_reject_mask 0x128 -swift_filter_on_merit"
 	;;
     "ftnproxy")
+        # SPACECRAFT_FILTER: -all, -agile -fermi -hete -integral -swift
+	GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-hete -integral -swift"
 	# reject Swift BAT alerts with bits 3, 5, 8 set (= 0x128).
 	# 3 = flt_cat_src, 5 = def_not_grb, 7 = uncert_grb (low image significance), 8 = gnd_cat_src
 	GCN_SCRIPT_STARTER_COMMAND_ARGS="-swift_soln_status_reject_mask 0x128 -swift_filter_on_merit"
 	;;
     "ftsproxy")
+        # SPACECRAFT_FILTER: -all, -agile -fermi -hete -integral -swift
+	GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-hete -integral -swift"
 	# reject Swift BAT alerts with bits 3, 5, 8 set (= 0x128).
 	# 3 = flt_cat_src, 5 = def_not_grb, 7 = uncert_grb (low image significance), 8 = gnd_cat_src
 	GCN_SCRIPT_STARTER_COMMAND_ARGS="-swift_soln_status_reject_mask 0x128 -swift_filter_on_merit"
@@ -61,7 +70,7 @@ start)
 	# Logger logs to current dir - make it grb temp dir.
 	cd ${GCN_SCRIPT_STARTER_TMP_HOME}
 	# Note we now assume ${GCN_SCRIPT_STARTER_USER} (eng) is running tcsh, not bash
-	su ${GCN_SCRIPT_STARTER_USER} -c "(java org.estar.gcn.GCNDatagramScriptStarter ${GCN_SCRIPT_STARTER_SPACECRAFT_FILTER} ${GCN_SCRIPT_STARTER_MAX_ERROR_BOX} ${GCN_SCRIPT_STARTER_SCRIPT} ${GCN_SCRIPT_STARTER_COMMAND_ARGS} > ${GCN_SCRIPT_STARTER_OUPTUT_FILE}) >& ${GCN_SCRIPT_STARTER_OUPTUT_FILE} &"
+	su ${GCN_SCRIPT_STARTER_USER} -c "(java org.estar.gcn.GCNDatagramScriptStarter ${GCN_SCRIPT_STARTER_SPACECRAFT_FILTER} ${GCN_SCRIPT_STARTER_MAX_ERROR_BOX} ${GCN_SCRIPT_STARTER_MAX_PROPOGATION_DELAY} ${GCN_SCRIPT_STARTER_SCRIPT} ${GCN_SCRIPT_STARTER_COMMAND_ARGS} > ${GCN_SCRIPT_STARTER_OUPTUT_FILE}) >& ${GCN_SCRIPT_STARTER_OUPTUT_FILE} &"
 	;;
 stop)
 	echo "GCN Script Starter stop."
