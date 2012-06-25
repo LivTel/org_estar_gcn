@@ -7,7 +7,12 @@ GCN_NAME	=gcn
 PACKAGEDIR 	=org/$(ESTAR_NAME)/$(GCN_NAME)
 PACKAGENAME	=org.$(ESTAR_NAME).$(GCN_NAME)
 JAR_FILE	=org_$(ESTAR_NAME)_$(GCN_NAME).jar
-JAVACFLAGS 	= -d $(LIBDIR) -sourcepath ../../../ -classpath $(LIBDIR):$(CLASSPATH)
+# ltproxy is currently running Java 1.5, but we only have Java 1.6 compilers available (ltobs9 / ltdevsrv).
+# Using -source 1.4 -target 1.4 will stop ClassVersionErrors on deployment.
+# We really also need:
+# -bootclasspath jdk1.4.2/lib/classes.zip -extdirs
+# (or equivalent) to stop linking against > 1.4 APIs at compile time.
+JAVACFLAGS 	= -source 1.4 -target 1.4 -d $(LIBDIR) -sourcepath ../../../ -classpath $(LIBDIR):$(CLASSPATH)
 DOCSDIR 	= $(ESTAR_DOC_HOME)/javadocs/$(PACKAGEDIR)
 
 SRCS = GCNDatagramListener.java GCNDatagramThread.java GCNDatagramForwarder.java \
