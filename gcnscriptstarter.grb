@@ -5,14 +5,14 @@
 #
 # chkconfig: 345 95 5
 # description: org.estar.gcn.GCNDatagramScriptStarter startup script.
-#ident	"$Id: gcnscriptstarter.grb,v 1.17 2012-06-22 14:58:05 cjm Exp $"
+#ident	"$Id: gcnscriptstarter.grb,v 1.18 2012-10-10 13:46:34 cjm Exp $"
 GCN_SCRIPT_STARTER_TMP_HOME=/grb/tmp/
 GCN_SCRIPT_STARTER_SCRIPT_HOME=/grb/bin/tocs_commands
 GCN_SCRIPT_STARTER_OUPTUT_FILE=/grb/tmp/gcn_script_starter_output.txt
 GCN_SCRIPT_STARTER_USER=eng
-# error box radius in arcseconds (150 = 2.5 arcmins)
-# NB 600 (10 arcmin radius)
-GCN_SCRIPT_STARTER_MAX_ERROR_BOX="-max_error_box 600"
+# Note, probably doesn't work on ltccd1, --short does not work!
+# Also HOSTTYPE not present in /etc/init.d scripts?
+hostname=`/bin/hostname --short`
 # Maximum length of time between the GRB being detected, and us receiving the packet
 # and starting a followup in response. i.e. don't followup GRBs that take too long to reach us.
 # in milliseconds: There are 3600000 ms/hr
@@ -21,18 +21,22 @@ GCN_SCRIPT_STARTER_MAX_PROPOGATION_DELAY="-max_propogation_delay 3600000"
 # name of script to run. Will be run from $GCN_SCRIPT_STARTER_SCRIPT_HOME
 GCN_SCRIPT_STARTER_SCRIPT="-script ${GCN_SCRIPT_STARTER_SCRIPT_HOME}/gamma_ray_burst_alert"
 # misc command line arguments
-# Note, probably doesn't work on ltccd1, --short does not work!
-# Also HOSTTYPE not present in /etc/init.d scripts?
-hostname=`/bin/hostname --short`
 case ${hostname} in
     ltproxy|mdt-test)
+        # error box radius in arcseconds (150 = 2.5 arcmins)
+        # NB 600 (10 arcmin radius)
+	# 36000 = 10 degrees - used so FERMI LAT is followed up.
+        GCN_SCRIPT_STARTER_MAX_ERROR_BOX="-max_error_box 36000"
         # SPACECRAFT_FILTER: -all, -agile -fermi -hete -integral -swift
-	GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-hete -integral -swift"
+	GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-fermi -hete -integral -swift"
 	# reject Swift BAT alerts with bits 3, 5, 8 set (= 0x128).
 	# 3 = flt_cat_src, 5 = def_not_grb, 7 = uncert_grb (low image significance), 8 = gnd_cat_src
 	GCN_SCRIPT_STARTER_COMMAND_ARGS="-swift_soln_status_reject_mask 0x128 -swift_filter_on_merit"
 	;;
     "ftnproxy")
+        # error box radius in arcseconds (150 = 2.5 arcmins)
+        # NB 600 (10 arcmin radius)
+        GCN_SCRIPT_STARTER_MAX_ERROR_BOX="-max_error_box 600"
         # SPACECRAFT_FILTER: -all, -agile -fermi -hete -integral -swift
 	GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-hete -integral -swift"
 	# reject Swift BAT alerts with bits 3, 5, 8 set (= 0x128).
@@ -40,6 +44,9 @@ case ${hostname} in
 	GCN_SCRIPT_STARTER_COMMAND_ARGS="-swift_soln_status_reject_mask 0x128 -swift_filter_on_merit"
 	;;
     "ftsproxy")
+        # error box radius in arcseconds (150 = 2.5 arcmins)
+        # NB 600 (10 arcmin radius)
+        GCN_SCRIPT_STARTER_MAX_ERROR_BOX="-max_error_box 600"
         # SPACECRAFT_FILTER: -all, -agile -fermi -hete -integral -swift
 	GCN_SCRIPT_STARTER_SPACECRAFT_FILTER="-hete -integral -swift"
 	# reject Swift BAT alerts with bits 3, 5, 8 set (= 0x128).
