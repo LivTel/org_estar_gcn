@@ -22,7 +22,7 @@ import org.estar.astrometry.*;
  * The server also supports a command socket, which can be used to configure the GCN Datagram Script Starter.
  * For details of the command socket command set see doControlCommand.
  * @author Chris Mottram
- * @version $Revision: 1.28 $
+ * @version $Revision: 1.29 $
  * @see #doControlCommand
  */
 public class GCNDatagramScriptStarter implements Runnable
@@ -31,7 +31,7 @@ public class GCNDatagramScriptStarter implements Runnable
 	/**
 	 * Revision control system version id.
 	 */
-	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.28 2012-06-22 14:55:16 cjm Exp $";
+	public final static String RCSID = "$Id: GCNDatagramScriptStarter.java,v 1.29 2012-10-10 13:45:32 cjm Exp $";
 	/**
 	 * The default multicast port to listen on, as agreed by Steve.
 	 */
@@ -563,18 +563,22 @@ public class GCNDatagramScriptStarter implements Runnable
 			return false;
 		}
 		// max Propogation Delay, if the GRB date was set in the alert data.
-		if(alertData.getGRBDate() != null)
+		// now ignore for FERMI :- see Carole's email
+		if(alertData.getAlertType() != GCNDatagramAlertData.ALERT_TYPE_FERMI)
 		{
-			nowDate = new Date();
-			propogationDelay = nowDate.getTime()-alertData.getGRBDate().getTime();
-			if(propogationDelay > maxPropogationDelay)
-			{
-				logger.log("alertFilter stopped propogation of alert on propogation delay: "+
-					   "propogation delay "+propogationDelay+
-					   " milliseconds larger than max propogation delay "+maxPropogationDelay+
-					   " milliseconds.");
-				return false;
-			}
+		       if(alertData.getGRBDate() != null)
+		       {
+			       nowDate = new Date();
+			       propogationDelay = nowDate.getTime()-alertData.getGRBDate().getTime();
+			       if(propogationDelay > maxPropogationDelay)
+			       {
+				       logger.log("alertFilter stopped propogation of alert on propogation delay: "+
+						  "propogation delay "+propogationDelay+
+						  " milliseconds larger than max propogation delay "+maxPropogationDelay+
+						  " milliseconds.");
+				       return false;
+			       }
+		       }
 		}
 		// ensure RA filled in
 		if(alertData.getRA() == null)
@@ -3476,6 +3480,10 @@ public class GCNDatagramScriptStarter implements Runnable
 }
 //
 // $Log: not supported by cvs2svn $
+// Revision 1.28  2012/06/22 14:55:16  cjm
+// Added Fermi LAT and SuperAGILE support.
+// Added max propogation time filter.
+//
 // Revision 1.27  2008/03/17 19:27:14  cjm
 // Added swiftFilterOnMerit control parameter.
 // Alert data now stores hasMerit.
