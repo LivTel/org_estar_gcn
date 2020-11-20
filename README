@@ -1,0 +1,14 @@
+GCNDatagramScriptStarter.
+
+cd /home/dev/bin/estar/classes
+java org.estar.gcn.GCNDatagramScriptStarter -all -max_error_box 1800 -script gamma_ray_burst_alert
+
+To test:
+cd /space/home/dev/bin/planetarium/java
+Ensure ngat_astronetry is in the CLASSPATH : 
+java GCN_Server -port 5170
+
+cd /space/home/dev/bin/planetarium/java
+Note GCN_Client does not work.
+java GCN_Client2 @host ltccd1 @port 5170 @ra 1.23 @dec 45.45 @type "probable grb" @error 1 @date "Tue 28 Sep 2004 15:08:50" @update 1234 @trigno 1234 @mesgno 1
+
